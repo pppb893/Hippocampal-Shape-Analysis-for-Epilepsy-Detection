@@ -321,13 +321,14 @@ def compute_mean_poly(meshes):
 
 EVAL_PAIRWISE_STEPS = [1, 2, 3, 5, 8, 10, 15, 20, 25, 30]
 
-def run_vtk_icp(source_poly, target_poly, return_history=False):
+def run_vtk_icp(source_poly, target_poly, return_history=False, max_iter=100, tolerance=0.0001, landmarks=200):
     icp = vtk.vtkIterativeClosestPointTransform()
     icp.SetSource(source_poly)
     icp.SetTarget(target_poly)
     icp.GetLandmarkTransform().SetModeToRigidBody()
-    icp.SetMaximumNumberOfIterations(100)
-    icp.SetMaximumMeanDistance(0.0001)  # ใน normalized units [-1,1]
+    icp.SetMaximumNumberOfIterations(max_iter)
+    icp.SetMaximumMeanDistance(tolerance)  # ใน normalized units [-1,1]
+    icp.SetMaximumNumberOfLandmarks(landmarks)
     icp.CheckMeanDistanceOn()
     icp.Update()
     matrix = icp.GetMatrix()
@@ -346,7 +347,8 @@ def run_vtk_icp(source_poly, target_poly, return_history=False):
         icp_k.SetTarget(target_poly)
         icp_k.GetLandmarkTransform().SetModeToRigidBody()
         icp_k.SetMaximumNumberOfIterations(k)
-        icp_k.SetMaximumMeanDistance(0.0001)
+        icp_k.SetMaximumMeanDistance(tolerance)
+        icp_k.SetMaximumNumberOfLandmarks(landmarks)
         icp_k.CheckMeanDistanceOn()
         icp_k.Update()
         history.append(float(icp_k.GetMeanDistance()))
@@ -361,7 +363,7 @@ def run_vtk_icp(source_poly, target_poly, return_history=False):
 # =============================================================================
 
 def export_aligned_nifti(file_list, T_matrices, output_dir,
-                         spacing_mm=0.5, n_voxels=128):
+                         spacing_mm=0.5, n_voxels=128, interpolation="NearestNeighbor"):
     out_vol_dir = os.path.join(output_dir, "aligned_nifti")
     os.makedirs(out_vol_dir, exist_ok=True)
     N = len(file_list)
@@ -393,7 +395,7 @@ def export_aligned_nifti(file_list, T_matrices, output_dir,
             "referenceVolume": ref_node.GetID(),
             "outputVolume": ref_node.GetID(),
             "transformationFile": t_node.GetID(),
-            "interpolationMode": "NearestNeighbor"
+            "interpolationMode": interpolation
         }
         slicer.cli.run(
             slicer.modules.resamplescalarvectordwivolume,
@@ -425,6 +427,12 @@ def export_aligned_nifti(file_list, T_matrices, output_dir,
 # output volume = 128 voxels x 0.02 unit -> box [-1.28, 1.28] (margin 28%)
 OUTPUT_SPACING = 0.02
 OUTPUT_VOXELS = 128
+MAX_GW_ITERATIONS = 20
+GW_TOLERANCE = 0.00005
+PAIRWISE_ITERATIONS = 100
+PAIRWISE_TOLERANCE = 0.0001
+PAIRWISE_LANDMARKS = 200
+INTERPOLATION_MODE = "NearestNeighbor"
 
 
 def main():
@@ -433,6 +441,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", default=None)
     parser.add_argument("--output_dir", default=None)
+    parser.add_argument("--output_spacing", type=float, default=OUTPUT_SPACING)
+    parser.add_argument("--output_voxels", type=int, default=OUTPUT_VOXELS)
+    parser.add_argument("--max_iterations", type=int, default=MAX_GW_ITERATIONS)
+    parser.add_argument("--tolerance", type=float, default=GW_TOLERANCE)
+    parser.add_argument("--pairwise_iterations", type=int, default=PAIRWISE_ITERATIONS)
+    parser.add_argument("--pairwise_tolerance", type=float, default=PAIRWISE_TOLERANCE)
+    parser.add_argument("--pairwise_landmarks", type=int, default=PAIRWISE_LANDMARKS)
+    parser.add_argument("--interpolation", type=str, default=INTERPOLATION_MODE)
     args, unknown = parser.parse_known_args()
 
     # ----------------------------------------------------------------
@@ -572,8 +588,8 @@ def main():
     # แต่ละรอบ: re-check orientation -> mean shape -> ICP to mean
     # ทำซ้ำจนกว่าความเปลี่ยนแปลงของระยะห่างเฉลี่ยจะไม่เกิน 0.001 (หรือครบ MAX_GW_ITERATIONS)
     # ----------------------------------------------------------------
-    MAX_GW_ITERATIONS = 20
-    GW_TOLERANCE = 0.00005
+    MAX_GW_ITERATIONS = args.max_iterations
+    GW_TOLERANCE = args.tolerance
     sprint(f"Step 4: Groupwise ICP (rigid, max {MAX_GW_ITERATIONS} rounds, tolerance={GW_TOLERANCE})...")
     T_icp = [np.eye(4) for _ in range(N)]
     prev_mean_dist = float("inf")
@@ -607,7 +623,9 @@ def main():
         pairwise_histories = []
         subj_pw_dict = {}
         for i in range(N):
-            dT, p_hist = run_vtk_icp(aligned_meshes[i], ref_mean, return_history=True)
+            dT, p_hist = run_vtk_icp(aligned_meshes[i], ref_mean, return_history=True,
+                                     max_iter=args.pairwise_iterations, tolerance=args.pairwise_tolerance,
+                                     landmarks=args.pairwise_landmarks)
             aligned_meshes[i] = apply_poly_transform(aligned_meshes[i], dT)
             T_icp[i] = dT @ T_icp[i]
             pairwise_histories.append(p_hist)
@@ -722,8 +740,9 @@ def main():
     sprint(f"  Saved mean_shape.ply")
 
     export_aligned_nifti(file_list, T_matrices, output_dir,
-                         spacing_mm=OUTPUT_SPACING,
-                         n_voxels=OUTPUT_VOXELS)
+                         spacing_mm=args.output_spacing,
+                         n_voxels=args.output_voxels,
+                         interpolation=args.interpolation)
 
     sprint(f"  All {N} aligned NIfTI saved to: {os.path.join(output_dir, 'aligned_nifti')}")
     sprint("--- ICP.py FINISHED ---")

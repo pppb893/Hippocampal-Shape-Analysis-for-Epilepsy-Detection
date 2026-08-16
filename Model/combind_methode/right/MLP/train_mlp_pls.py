@@ -169,23 +169,72 @@ def run_pipeline():
     plt.close()
     print("Saved Confusion Matrix to 'plots/confusion_matrix.png'")
 
-    # ROC Curve
-    fpr, tpr, _ = roc_curve(y_test, y_prob)
-    roc_auc = auc(fpr, tpr)
+        # Bootstrapping for 95% Confidence Interval
+    n_bootstraps = 1000
+    tprs_array = []
+    base_fpr = np.linspace(0, 1, 101)
+    
+    y_test_arr = np.array(y_test)
+    y_prob_arr = np.array(y_prob)
 
+    np.random.seed(42)
+    for i in range(n_bootstraps):
+        indices = np.random.randint(0, len(y_test_arr), len(y_test_arr))
+        if len(np.unique(y_test_arr[indices])) < 2:
+            continue
+
+        fpr_b, tpr_b, _ = roc_curve(y_test_arr[indices], y_prob_arr[indices])
+        tpr_interp = np.interp(base_fpr, fpr_b, tpr_b)
+        tpr_interp[0] = 0.0
+        tprs_array.append(tpr_interp)
+
+    tprs_array = np.array(tprs_array)
+    mean_tprs = tprs_array.mean(axis=0)
+    mean_tprs[-1] = 1.0
+    
+    tpr_lower = np.percentile(tprs_array, 2.5, axis=0)
+    tpr_upper = np.percentile(tprs_array, 97.5, axis=0)
+
+    original_fpr, original_tpr, _ = roc_curve(y_test_arr, y_prob_arr)
+    roc_auc = auc(original_fpr, original_tpr)
+
+    # === Plot 1: Bootstrap Lines Version ===
     plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+    sample_indices = np.random.choice(len(tprs_array), size=100, replace=False)
+    for i, idx in enumerate(sample_indices):
+        if i == 0:
+            plt.plot(base_fpr, tprs_array[idx], color='steelblue', lw=1, alpha=0.3, label='Bootstrap Samples')
+        else:
+            plt.plot(base_fpr, tprs_array[idx], color='steelblue', lw=1, alpha=0.3)
+            
+    plt.plot(base_fpr, mean_tprs, color='darkorange', lw=3, label=f'Mean ROC (area = {roc_auc:.2f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic (ROC) - Test Set')
+    plt.title('ROC Curve (Bootstrap Lines) - Test Set')
     plt.legend(loc="lower right")
     plt.grid(True)
-    plt.savefig('plots/roc_curve.png')
+    plt.savefig('plots/roc_curve_lines.png')
     plt.close()
-    print("Saved ROC curve to 'plots/roc_curve.png'")
+
+    # === Plot 2: Shaded 95% CI Version ===
+    plt.figure(figsize=(8, 6))
+    plt.plot(base_fpr, mean_tprs, color='darkorange', lw=2, label=f'Mean ROC (area = {roc_auc:.2f})')
+    plt.fill_between(base_fpr, tpr_lower, tpr_upper, color='grey', alpha=0.3, label='95% CI')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve (95% CI Shaded) - Test Set')
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.savefig('plots/roc_curve_ci.png')
+    plt.close()
+    
+    print("Saved ROC curves to 'plots/roc_curve_lines.png' and 'plots/roc_curve_ci.png'")
 
     print("\nPipeline finished successfully! All files are in the 'plots' directory.")
 

@@ -1,6 +1,6 @@
 import sys
 import webbrowser
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QSplitter, QLabel, QComboBox, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QComboBox, QMessageBox, QTextEdit
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 
@@ -21,21 +21,40 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
+        v_splitter = QSplitter(Qt.Orientation.Vertical)
+        main_layout.addWidget(v_splitter)
+
+        h_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self.left_panel = LeftPanel(self)
         self.right_panel = RightPanel(self)
 
-        splitter.addWidget(self.left_panel)
-        splitter.addWidget(self.right_panel)
-        splitter.setSizes([350, 850])
+        h_splitter.addWidget(self.left_panel)
+        h_splitter.addWidget(self.right_panel)
+        h_splitter.setSizes([350, 850])
+        
+        v_splitter.addWidget(h_splitter)
+        
+        console_widget = QWidget()
+        console_layout = QVBoxLayout(console_widget)
+        console_layout.setContentsMargins(5, 0, 5, 5)
+        console_layout.addWidget(QLabel("Console Output:"))
+        
+        self.log_window = QTextEdit()
+        self.log_window.setReadOnly(True)
+        self.log_window.setStyleSheet("background-color: #1e1e1e; color: #00ff00; font-family: Consolas;")
+        console_layout.addWidget(self.log_window)
+        
+        v_splitter.addWidget(console_widget)
+        v_splitter.setSizes([600, 200])
 
         # Connect signals between panels
         self.left_panel.signal_subject_selected.connect(self.right_panel.display_subject)
-        self.right_panel.signal_log_message.connect(self.left_panel.log)
+        self.left_panel.signal_log_message.connect(self.log)
+        self.right_panel.signal_log_message.connect(self.log)
+        self.module_combo.currentIndexChanged.connect(self.left_panel.switch_module)
 
-        self.left_panel.log("SlicerSALT-style UI initialized successfully.")
+        self.log("SlicerSALT-style UI initialized successfully.")
         
         self.check_slicer_salt()
 
@@ -48,6 +67,23 @@ class MainWindow(QMainWindow):
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        
+        # Add basic Edit actions
+        undo_action = QAction("Undo", self)
+        redo_action = QAction("Redo", self)
+        preferences_action = QAction("Preferences...", self)
+        edit_menu.addAction(undo_action)
+        edit_menu.addAction(redo_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(preferences_action)
+        
+        # Add basic View actions
+        toggle_toolbar_action = QAction("Toggle Toolbar", self, checkable=True)
+        toggle_toolbar_action.setChecked(True)
+        reset_view_action = QAction("Reset View", self)
+        view_menu.addAction(toggle_toolbar_action)
+        view_menu.addSeparator()
+        view_menu.addAction(reset_view_action)
 
         toolbar = self.addToolBar("Main Toolbar")
         toolbar.setMovable(False)
@@ -74,4 +110,7 @@ class MainWindow(QMainWindow):
             webbrowser.open("https://salt.slicer.org/")
             sys.exit(1)
         else:
-            self.left_panel.log(f"SUCCESS: SlicerSALT detected at {slicer_paths[0]}")
+            self.log(f"SUCCESS: SlicerSALT detected at {slicer_paths[0]}")
+
+    def log(self, message):
+        self.log_window.append(message)
