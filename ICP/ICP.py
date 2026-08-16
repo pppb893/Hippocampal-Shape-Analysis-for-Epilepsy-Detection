@@ -1,15 +1,9 @@
 import os
 import sys
 
-# =============================================================================
-# BOOTSTRAP: ถ้ารันด้วย Python ปกติ (ไม่ใช่ SlicerSALT) ให้ re-launch
-# ตัวเองผ่าน SlicerSALT.exe เพราะ slicer / vtk module อยู่ในตัว SlicerSALT
-# เท่านั้น ใช้ env var SLICER_EXE override ได้ถ้า path ไม่ตรง
-# =============================================================================
-
 def _bootstrap_slicer():
     try:
-        import slicer  # noqa: F401
+        import slicer
         return
     except ImportError:
         pass
@@ -31,13 +25,7 @@ def _bootstrap_slicer():
     print(f"       {slicer_exe}")
     sys.exit(subprocess.call(cmd))
 
-
 _bootstrap_slicer()
-
-
-# =============================================================================
-# จากตรงนี้ลงไป: เรารันอยู่ใน SlicerSALT แล้ว -> import เต็มได้
-# =============================================================================
 
 import vtk
 import numpy as np
@@ -45,10 +33,8 @@ import glob
 import argparse
 import slicer
 from datetime import datetime
+from vtk.util.numpy_support import vtk_to_numpy
 
-# =============================================================================
-# SCRIPT_DIR: หา path ของสคริปต์นี้ให้ถูกต้องใน SlicerSALT
-# =============================================================================
 try:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -60,13 +46,7 @@ except NameError:
 
 DEBUG_LOG = os.path.join(SCRIPT_DIR, "icp_debug_log.txt")
 
-
-# =============================================================================
-# UTILITIES
-# =============================================================================
-
 def sprint(msg):
-    """Print พร้อม timestamp และบันทึกลง log file"""
     timestamp = datetime.now().strftime("%H:%M:%S")
     formatted_msg = f"[{timestamp}] [ICP-LOG] {msg}"
     print(formatted_msg)
@@ -74,31 +54,19 @@ def sprint(msg):
     with open(DEBUG_LOG, "a") as f:
         f.write(formatted_msg + "\n")
 
-
 def get_points_numpy(poly):
-    """แปลง vtkPolyData points -> numpy array (N, 3)"""
-    n = poly.GetNumberOfPoints()
-    pts = poly.GetPoints()
-    arr = np.zeros((n, 3))
-    for i in range(n):
-        arr[i] = pts.GetPoint(i)
-    return arr
-
+    if poly is None or poly.GetPoints() is None:
+        return np.zeros((0, 3), dtype=np.float64)
+    return vtk_to_numpy(poly.GetPoints().GetData())
 
 def prompt_folder(title):
-    """
-    เปิด QFileDialog ให้ user เลือก folder (ใช้ Qt ที่ฝังใน SlicerSALT)
-    คืน path string หรือ None ถ้า user กด Cancel
-    """
     import qt
     folder = qt.QFileDialog.getExistingDirectory(None, title)
     if not folder:
         return None
     return folder
 
-
 def apply_poly_transform(poly, matrix_np):
-    """Apply 4x4 numpy transform matrix กับ vtkPolyData"""
     transform = vtk.vtkTransform()
     matrix_vtk = vtk.vtkMatrix4x4()
     for r in range(4):
@@ -111,12 +79,7 @@ def apply_poly_transform(poly, matrix_np):
     transformer.Update()
     return transformer.GetOutput()
 
-
 def icp_distance(source_poly, target_poly, n_sample=500):
-    """
-    Mean nearest-neighbor distance จาก source -> target
-    (ใช้ sample 500 จุดเพื่อความเร็ว: ตรวจ convergence + เปรียบเทียบ orientation)
-    """
     locator = vtk.vtkKdTreePointLocator()
     locator.SetDataSet(target_poly)
     locator.BuildLocator()
@@ -131,24 +94,7 @@ def icp_distance(source_poly, target_poly, n_sample=500):
         total_dist += np.sqrt(sum((src_pts[i][k] - cp[k]) ** 2 for k in range(3)))
     return total_dist / n_sample
 
-
-# =============================================================================
-# STEP A: LOAD + MESH
-# โหลด NIfTI label -> surface mesh (vtkPolyData) ใน RAS space
-# =============================================================================
-
 def load_and_mesh_node(filepath, max_retries=2):
-    """
-    โหลด label volume ผ่าน Slicer -> vtkDiscreteMarchingCubes -> apply IJK->RAS
-    เพื่อให้ mesh อยู่ใน physical mm space เดียวกับ NIfTI ต้นฉบับ
-
-    Robust loading:
-      - slicer.util.loadLabelVolume() raise RuntimeError ตอน failed
-        (ไม่ใช่ return None) -> ต้อง try/except กัน script crash
-      - ลอง normalize path (\\ -> /) ก่อน retry (Slicer ไวกับ mixed-slash บน Windows)
-      - retry สูงสุด max_retries ครั้งกัน transient failure (file lock, GC pressure)
-    return None ถ้า load ไม่สำเร็จ -> caller จะ skip subject ตัวนั้น (ไม่ stop pipeline)
-    """
     normalized = os.path.abspath(filepath).replace("\\", "/")
     last_err = None
     for attempt in range(max_retries + 1):
@@ -185,7 +131,6 @@ def load_and_mesh_node(filepath, max_retries=2):
                 try: slicer.mrmlScene.RemoveNode(node)
                 except Exception: pass
             if attempt < max_retries:
-                # transient failure -> ลอง garbage collect แล้ว retry
                 try:
                     import gc; gc.collect()
                     import time; time.sleep(0.5)
@@ -194,18 +139,7 @@ def load_and_mesh_node(filepath, max_retries=2):
     sprint(f"  !!! load_and_mesh_node failed after {max_retries+1} attempts: {last_err}")
     return None
 
-
-# =============================================================================
-# STEP B: PRINCIPAL AXIS ALIGNMENT (PCA)
-# หมุน mesh ให้ long axis = Z, second axis = X (right-handed)
-# =============================================================================
-
 def principal_axis_align(poly):
-    """
-    ใช้ SVD หา principal axes แล้ว rotate ให้:
-      PC1 (variance สูงสุด) -> Z, PC2 -> X, PC3 -> Y
-    บังคับให้เป็น right-handed coordinate (det = +1) เพื่อ proper rotation
-    """
     pts = get_points_numpy(poly)
     centroid = pts.mean(axis=0)
     pts_c = pts - centroid
@@ -227,29 +161,15 @@ def principal_axis_align(poly):
     T_combined = T_rot @ T_cent
     return apply_poly_transform(poly, T_combined), T_combined
 
-
-# =============================================================================
-# STEP C: ORIENTATION DISAMBIGUATION (PROPER ROTATIONS ONLY)
-# หลัง PCA แกน Z อาจชี้กลับด้านได้ (sign ambiguity ของ SVD)
-# ทดสอบ 4 candidate ที่เป็น proper rotation 180 องศา รอบแกน X / Y / Z (det = +1)
-# *** หลีกเลี่ยง reflection (det = -1) ที่ทำให้ chirality เปลี่ยน ***
-# =============================================================================
-
 _FLIP_CANDIDATES = [
-    np.eye(4),                                # identity
-    np.diag([1.0, -1.0, -1.0, 1.0]),          # 180 deg about X (flip Y, Z)
-    np.diag([-1.0, 1.0, -1.0, 1.0]),          # 180 deg about Y (flip X, Z)
-    np.diag([-1.0, -1.0, 1.0, 1.0]),          # 180 deg about Z (flip X, Y)
+    np.eye(4),
+    np.diag([1.0, -1.0, -1.0, 1.0]),
+    np.diag([-1.0, 1.0, -1.0, 1.0]),
+    np.diag([-1.0, -1.0, 1.0, 1.0]),
 ]
 _FLIP_NAMES = ["identity", "rotX180", "rotY180", "rotZ180"]
 
-
 def pole_flip_correction(poly, reference_poly=None):
-    """
-    เลือก orientation ที่ดีที่สุดจาก 4 proper rotations (ไม่มี mirror)
-    - ไม่มี reference: heuristic 'หัวอ้วน' ตามแกน Z (rotate รอบ Y ถ้าหัวอยู่ Z-)
-    - มี reference  : ทดลองทั้ง 4 candidate -> เลือก ICP distance ต่ำสุด
-    """
     if reference_poly is None:
         pts = get_points_numpy(poly)
         z_mid = (pts[:, 2].min() + pts[:, 2].max()) / 2.0
@@ -258,7 +178,7 @@ def pole_flip_correction(poly, reference_poly=None):
         fat_pos = (np.std(pts_pos[:, 0]) + np.std(pts_pos[:, 1])) if len(pts_pos) > 0 else 0.0
         fat_neg = (np.std(pts_neg[:, 0]) + np.std(pts_neg[:, 1])) if len(pts_neg) > 0 else 0.0
         if fat_neg > fat_pos:
-            idx = 2  # rotY180 -> flip Z (proper rotation)
+            idx = 2
         else:
             idx = 0
         sprint(f"    Pole check (no ref): fat_neg={fat_neg:.4f}, fat_pos={fat_pos:.4f} -> {_FLIP_NAMES[idx]}")
@@ -278,13 +198,6 @@ def pole_flip_correction(poly, reference_poly=None):
     sprint(f"    Pole check: dists=[{', '.join(f'{d:.5f}' for d in dists)}] -> {_FLIP_NAMES[best_idx]}")
     T = _FLIP_CANDIDATES[best_idx].copy()
     return apply_poly_transform(poly, T), T, (best_idx != 0)
-
-
-# =============================================================================
-# STEP D: MEAN SHAPE (NN-matching)
-# ใช้ topology ของ meshes[0] เป็น anchor; สำหรับแต่ละจุดใน reference
-# หา nearest neighbor ใน mesh อื่น แล้ว average ตำแหน่ง
-# =============================================================================
 
 def compute_mean_poly(meshes):
     counts = [m.GetNumberOfPoints() for m in meshes]
@@ -312,13 +225,6 @@ def compute_mean_poly(meshes):
 
     return mean_poly
 
-
-# =============================================================================
-# STEP E: VTK ICP (Rigid)
-# หา rotation + translation ที่ทำให้ source เข้าใกล้ target ที่สุด
-# convergence threshold = 0.01 mm (เหมาะกับ physical scale ของ hippocampus)
-# =============================================================================
-
 EVAL_PAIRWISE_STEPS = [1, 2, 3, 5, 8, 10, 15, 20, 25, 30]
 
 def run_vtk_icp(source_poly, target_poly, return_history=False, max_iter=100, tolerance=0.0001, landmarks=200):
@@ -327,7 +233,7 @@ def run_vtk_icp(source_poly, target_poly, return_history=False, max_iter=100, to
     icp.SetTarget(target_poly)
     icp.GetLandmarkTransform().SetModeToRigidBody()
     icp.SetMaximumNumberOfIterations(max_iter)
-    icp.SetMaximumMeanDistance(tolerance)  # ใน normalized units [-1,1]
+    icp.SetMaximumMeanDistance(tolerance)
     icp.SetMaximumNumberOfLandmarks(landmarks)
     icp.CheckMeanDistanceOn()
     icp.Update()
@@ -354,13 +260,6 @@ def run_vtk_icp(source_poly, target_poly, return_history=False, max_iter=100, to
         history.append(float(icp_k.GetMeanDistance()))
 
     return res, history
-
-
-# =============================================================================
-# STEP F: EXPORT aligned NIfTI
-# Resample volume ต้นฉบับด้วย T_matrices ที่คำนวณได้ ลงบน reference grid
-# ขนาด n_voxels^3 ที่ spacing_mm/voxel โดยจัด origin ให้ box อยู่กึ่งกลาง 0
-# =============================================================================
 
 def export_aligned_nifti(file_list, T_matrices, output_dir,
                          spacing_mm=0.5, n_voxels=128, interpolation="NearestNeighbor"):
@@ -408,23 +307,6 @@ def export_aligned_nifti(file_list, T_matrices, output_dir,
         slicer.mrmlScene.RemoveNode(t_node)
         slicer.mrmlScene.RemoveNode(ref_node)
 
-
-# =============================================================================
-# MAIN PIPELINE
-# Two-stage normalization + rigid groupwise ICP:
-#   1. Pre-ICP per-mesh normalize: center + scale ให้ |coord| <= 1
-#   2. PCA orientation alignment
-#   3. Orientation disambiguation (proper rotations, no reflection)
-#   4. Groupwise ICP (rigid: rotation + translation only)
-#   5. Post-ICP GLOBAL normalize: หา union bounding box ของทุก mesh
-#                                  แล้วใช้ค่าเดียวกัน normalize ทุก mesh
-#                                  -> เก็บ relative size ในกลุ่ม + fit ใน [-1, 1]
-#   6. Export aligned NIfTI
-# =============================================================================
-
-# หลัง pre-ICP per-mesh normalize + post-ICP global normalize
-# coords ของ mesh จะอยู่ใน [-1, 1] (normalized units, ไม่ใช่ mm แล้ว)
-# output volume = 128 voxels x 0.02 unit -> box [-1.28, 1.28] (margin 28%)
 OUTPUT_SPACING = 0.02
 OUTPUT_VOXELS = 128
 MAX_GW_ITERATIONS = 20
@@ -434,58 +316,22 @@ PAIRWISE_TOLERANCE = 0.0001
 PAIRWISE_LANDMARKS = 200
 INTERPOLATION_MODE = "NearestNeighbor"
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Group-wise rigid ICP alignment for NIfTI labels.")
+    parser.add_argument("--input_dir", default=None, help="Input directory containing NIfTI labels")
+    parser.add_argument("--output_dir", default=None, help="Output directory for aligned files")
+    parser.add_argument("--output_spacing", type=float, default=OUTPUT_SPACING, help="Output voxel spacing in mm/unit")
+    parser.add_argument("--output_voxels", type=int, default=OUTPUT_VOXELS, help="Output volume dimension size")
+    parser.add_argument("--max_iterations", type=int, default=MAX_GW_ITERATIONS, help="Max groupwise ICP iterations")
+    parser.add_argument("--tolerance", type=float, default=GW_TOLERANCE, help="Groupwise convergence tolerance")
+    parser.add_argument("--pairwise_iterations", type=int, default=PAIRWISE_ITERATIONS, help="Pairwise ICP max iterations")
+    parser.add_argument("--pairwise_tolerance", type=float, default=PAIRWISE_TOLERANCE, help="Pairwise ICP tolerance")
+    parser.add_argument("--pairwise_landmarks", type=int, default=PAIRWISE_LANDMARKS, help="Pairwise ICP landmarks count")
+    parser.add_argument("--interpolation", type=str, default=INTERPOLATION_MODE, help="Resampling interpolation mode")
+    args, _ = parser.parse_known_args()
+    return args
 
-def main():
-    sprint("--- ICP.py STARTING (rigid groupwise ICP) ---")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", default=None)
-    parser.add_argument("--output_dir", default=None)
-    parser.add_argument("--output_spacing", type=float, default=OUTPUT_SPACING)
-    parser.add_argument("--output_voxels", type=int, default=OUTPUT_VOXELS)
-    parser.add_argument("--max_iterations", type=int, default=MAX_GW_ITERATIONS)
-    parser.add_argument("--tolerance", type=float, default=GW_TOLERANCE)
-    parser.add_argument("--pairwise_iterations", type=int, default=PAIRWISE_ITERATIONS)
-    parser.add_argument("--pairwise_tolerance", type=float, default=PAIRWISE_TOLERANCE)
-    parser.add_argument("--pairwise_landmarks", type=int, default=PAIRWISE_LANDMARKS)
-    parser.add_argument("--interpolation", type=str, default=INTERPOLATION_MODE)
-    args, unknown = parser.parse_known_args()
-
-    # ----------------------------------------------------------------
-    # ถ้าไม่มี --input_dir : เปิด folder picker dialog
-    # ถ้าไม่มี --output_dir : ใช้ <SCRIPT_DIR>/output_<basename ของ input>
-    # (พฤติกรรมเดียวกับที่ run_everything.bat เคยจัดให้)
-    # ----------------------------------------------------------------
-    input_dir = args.input_dir
-    if not input_dir:
-        sprint("No --input_dir given. Opening folder picker...")
-        input_dir = prompt_folder("Select input folder containing NIfTI labels")
-        if not input_dir:
-            sprint("ERROR: No folder selected. Exiting.")
-            return
-
-    output_dir = args.output_dir
-    if not output_dir:
-        basename = os.path.basename(os.path.normpath(input_dir))
-        output_dir = os.path.join(SCRIPT_DIR, f"output_{basename}")
-        sprint(f"No --output_dir given. Using default: {output_dir}")
-
-    input_dir = input_dir.replace("\\", "/")
-    output_dir = output_dir.replace("\\", "/")
-    os.makedirs(output_dir, exist_ok=True)
-    sprint(f"Input  dir: {input_dir}")
-    sprint(f"Output dir: {output_dir}")
-
-    # ลบประวัติและรูปภาพเดิม (ถ้ามี) เพื่อให้แน่ใจว่าบันทึกใหม่สดเสมอ
-    for old_file in ["icp_convergence_history.json", "icp_convergence.png"]:
-        old_path = os.path.join(output_dir, old_file)
-        if os.path.exists(old_path):
-            try:
-                os.remove(old_path)
-                sprint(f"  Cleaned up old output file: {old_file}")
-            except Exception as e:
-                pass
-
+def find_input_files(input_dir):
     extensions = ["*.nii.gz", "*.nii", "*.hdr", "*.nrrd"]
     file_list = []
     for ext in extensions:
@@ -496,15 +342,19 @@ def main():
     if label_files:
         file_list = label_files
         sprint(f"Prioritizing {len(file_list)} label files.")
-    sprint(f"Total files to process: {len(file_list)}")
+    return file_list
 
-    if not file_list:
-        sprint("ERROR: No files found in input_dir.")
-        return
+def clean_previous_outputs(output_dir):
+    for old_file in ["icp_convergence_history.json", "icp_convergence.png"]:
+        old_path = os.path.join(output_dir, old_file)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+                sprint(f"  Cleaned up old output file: {old_file}")
+            except Exception:
+                pass
 
-    # ----------------------------------------------------------------
-    # STEP A: load + mesh
-    # ----------------------------------------------------------------
+def step_load_and_mesh_all(file_list):
     sprint("Step A: Loading and meshing label volumes...")
     meshes = []
     valid_files = []
@@ -516,20 +366,11 @@ def main():
             valid_files.append(f)
         else:
             sprint(f"  WARNING: Skipping {os.path.basename(f)} (no points)")
+    return meshes, valid_files
 
-    N = len(meshes)
-    if N == 0:
-        sprint("ERROR: No valid label meshes found.")
-        return
-    file_list = valid_files
-    sprint(f"  Loaded {N} meshes successfully.")
-
-    # ----------------------------------------------------------------
-    # STEP 1: Per-mesh normalization (center + scale to fit |coord| <= 1)
-    # ทำเพื่อให้ ICP convergence เสถียร + ทุก mesh เริ่มจาก scale เดียวกัน
-    # (per-mesh scaling นี้ -- post-ICP จะ global-normalize อีกชั้น Step 5)
-    # ----------------------------------------------------------------
+def step1_per_mesh_normalize(meshes):
     sprint("Step 1: Per-mesh normalization (center + scale to |coord| <= 1)...")
+    N = len(meshes)
     aligned_meshes = []
     T_initial = []
     for i in range(N):
@@ -552,21 +393,20 @@ def main():
         T_initial.append(T_combined)
         if i < 3 or i == N - 1:
             sprint(f"  Mesh {i+1}: centroid={centroid}, scale={s:.6f}")
+    return aligned_meshes, T_initial
 
-    # ----------------------------------------------------------------
-    # STEP 2: Principal Axis Alignment (PCA)
-    # ----------------------------------------------------------------
+def step2_pca_alignment(aligned_meshes):
     sprint("Step 2: Principal Axis Alignment (PCA)...")
+    N = len(aligned_meshes)
     T_pca_list = []
     for i in range(N):
         aligned_meshes[i], T_p = principal_axis_align(aligned_meshes[i])
         T_pca_list.append(T_p)
+    return T_pca_list
 
-    # ----------------------------------------------------------------
-    # STEP 3: Orientation disambiguation (proper rotations only)
-    # mesh[0] ใช้ heuristic; mesh[1..N] เปรียบกับ mesh[0]
-    # ----------------------------------------------------------------
+def step3_orientation_disambiguation(aligned_meshes, T_initial, T_pca_list):
     sprint("Step 3: Orientation disambiguation (proper rotations vs reference)...")
+    N = len(aligned_meshes)
     T_flip = []
     aligned_meshes[0], tf0, flipped0 = pole_flip_correction(aligned_meshes[0], reference_poly=None)
     T_flip.append(tf0)
@@ -579,18 +419,16 @@ def main():
         T_flip.append(tfi)
         sprint(f"  Mesh {i+1}: {'REORIENTED' if flippedi else 'OK'}")
 
-    # รวม transform chain: flip @ pca @ cent
     for i in range(N):
         T_initial[i] = T_flip[i] @ T_pca_list[i] @ T_initial[i]
+    return T_initial
 
-    # ----------------------------------------------------------------
-    # STEP 4: Groupwise ICP (rigid)
-    # แต่ละรอบ: re-check orientation -> mean shape -> ICP to mean
-    # ทำซ้ำจนกว่าความเปลี่ยนแปลงของระยะห่างเฉลี่ยจะไม่เกิน 0.001 (หรือครบ MAX_GW_ITERATIONS)
-    # ----------------------------------------------------------------
-    MAX_GW_ITERATIONS = args.max_iterations
-    GW_TOLERANCE = args.tolerance
-    sprint(f"Step 4: Groupwise ICP (rigid, max {MAX_GW_ITERATIONS} rounds, tolerance={GW_TOLERANCE})...")
+def step4_groupwise_icp(aligned_meshes, file_list, args):
+    N = len(aligned_meshes)
+    max_gw_iter = args.max_iterations
+    gw_tolerance = args.tolerance
+    sprint(f"Step 4: Groupwise ICP (rigid, max {max_gw_iter} rounds, tolerance={gw_tolerance})...")
+    
     T_icp = [np.eye(4) for _ in range(N)]
     prev_mean_dist = float("inf")
 
@@ -606,8 +444,8 @@ def main():
         "subject_distances": {os.path.basename(f): [] for f in file_list}
     }
 
-    for gw_iter in range(MAX_GW_ITERATIONS):
-        sprint(f"  [Groupwise Round {gw_iter+1}/{MAX_GW_ITERATIONS}]")
+    for gw_iter in range(max_gw_iter):
+        sprint(f"  [Groupwise Round {gw_iter+1}/{max_gw_iter}]")
 
         sprint(f"  [Round {gw_iter+1}] Pre-mean orientation re-check...")
         for i in range(1, N):
@@ -652,14 +490,17 @@ def main():
             bname = os.path.basename(f)
             gw_history["subject_distances"][bname].append(float(subj_dists[i]))
 
-        if gw_iter > 0 and dist_change <= GW_TOLERANCE:
-            sprint(f"  --> Groupwise ICP CONVERGED at round {gw_iter+1} (change: {dist_change:.6f} <= {GW_TOLERANCE})")
+        if gw_iter > 0 and dist_change <= gw_tolerance:
+            sprint(f"  --> Groupwise ICP CONVERGED at round {gw_iter+1} (change: {dist_change:.6f} <= {gw_tolerance})")
             break
         prev_mean_dist = current_mean_dist
 
+    return T_icp, gw_history
+
+def step5_global_bounding_box_normalize(aligned_meshes, T_initial, T_icp):
     sprint("Step 5: Global bounding-box normalization (preserving relative physical sizes)...")
+    N = len(aligned_meshes)
     
-    # 1. Scale each aligned mesh back to its original physical size
     physical_aligned_meshes = []
     T_scale_back_list = []
     for i in range(N):
@@ -670,7 +511,6 @@ def main():
         m_phys = apply_poly_transform(aligned_meshes[i], T_scale_back)
         physical_aligned_meshes.append(m_phys)
 
-    # 2. Find union bounding box of all physical aligned meshes
     g_min = np.array([float('inf')] * 3)
     g_max = np.array([float('-inf')] * 3)
     for m in physical_aligned_meshes:
@@ -684,7 +524,6 @@ def main():
            f"Y[{g_min[1]:+.4f},{g_max[1]:+.4f}]  "
            f"Z[{g_min[2]:+.4f},{g_max[2]:+.4f}]")
 
-    # 3. Center on union, scale uniformly with max half-extent
     g_center = (g_min + g_max) / 2.0
     g_half = (g_max - g_min) / 2.0
     max_half = float(g_half.max())
@@ -699,11 +538,9 @@ def main():
     sprint(f"  Global scale  = {global_scale:.6f}  "
            f"(max physical half-extent {max_half:.4f} -> 1.0)")
 
-    # 4. Apply T_global to the physical aligned meshes
     for i in range(N):
         aligned_meshes[i] = apply_poly_transform(physical_aligned_meshes[i], T_global)
 
-    # verify post-normalize
     v_min = np.array([float('inf')] * 3)
     v_max = np.array([float('-inf')] * 3)
     for m in aligned_meshes:
@@ -716,13 +553,12 @@ def main():
            f"Y[{v_min[1]:+.4f},{v_max[1]:+.4f}]  "
            f"Z[{v_min[2]:+.4f},{v_max[2]:+.4f}]")
 
-    # final transform chain: global @ scale_back @ icp @ initial
     T_matrices = [T_global @ T_scale_back_list[i] @ T_icp[i] @ T_initial[i] for i in range(N)]
+    return T_matrices
 
-    # ----------------------------------------------------------------
-    # STEP 6: Save results
-    # ----------------------------------------------------------------
+def step6_save_outputs(output_dir, file_list, aligned_meshes, T_matrices, gw_history, args):
     sprint("Step 6: Saving results...")
+    N = len(file_list)
     np.save(os.path.join(output_dir, "T_matrices.npy"), np.array(T_matrices))
     sprint(f"  Saved T_matrices.npy ({N} matrices)")
 
@@ -730,14 +566,14 @@ def main():
     history_json_path = os.path.join(output_dir, "icp_convergence_history.json")
     with open(history_json_path, "w") as f:
         json.dump(gw_history, f, indent=2)
-    sprint(f"  Saved icp_convergence_history.json")
+    sprint("  Saved icp_convergence_history.json")
 
     mean_poly = compute_mean_poly(aligned_meshes)
     writer = vtk.vtkPLYWriter()
     writer.SetFileName(os.path.join(output_dir, "mean_shape.ply"))
     writer.SetInputData(mean_poly)
     writer.Write()
-    sprint(f"  Saved mean_shape.ply")
+    sprint("  Saved mean_shape.ply")
 
     export_aligned_nifti(file_list, T_matrices, output_dir,
                          spacing_mm=args.output_spacing,
@@ -747,15 +583,54 @@ def main():
     sprint(f"  All {N} aligned NIfTI saved to: {os.path.join(output_dir, 'aligned_nifti')}")
     sprint("--- ICP.py FINISHED ---")
 
+def main():
+    sprint("--- ICP.py STARTING (rigid groupwise ICP) ---")
+    args = parse_args()
 
-# =============================================================================
-# ENTRY POINT
-# =============================================================================
+    input_dir = args.input_dir
+    if not input_dir:
+        sprint("No --input_dir given. Opening folder picker...")
+        input_dir = prompt_folder("Select input folder containing NIfTI labels")
+        if not input_dir:
+            sprint("ERROR: No folder selected. Exiting.")
+            return
+
+    output_dir = args.output_dir
+    if not output_dir:
+        basename = os.path.basename(os.path.normpath(input_dir))
+        output_dir = os.path.join(SCRIPT_DIR, f"output_{basename}")
+        sprint(f"No --output_dir given. Using default: {output_dir}")
+
+    input_dir = input_dir.replace("\\", "/")
+    output_dir = output_dir.replace("\\", "/")
+    os.makedirs(output_dir, exist_ok=True)
+    sprint(f"Input  dir: {input_dir}")
+    sprint(f"Output dir: {output_dir}")
+
+    clean_previous_outputs(output_dir)
+
+    file_list = find_input_files(input_dir)
+    sprint(f"Total files to process: {len(file_list)}")
+    if not file_list:
+        sprint("ERROR: No files found in input_dir.")
+        return
+
+    meshes, valid_files = step_load_and_mesh_all(file_list)
+    N = len(meshes)
+    if N == 0:
+        sprint("ERROR: No valid label meshes found.")
+        return
+    file_list = valid_files
+    sprint(f"  Loaded {N} meshes successfully.")
+
+    aligned_meshes, T_initial = step1_per_mesh_normalize(meshes)
+    T_pca_list = step2_pca_alignment(aligned_meshes)
+    T_initial = step3_orientation_disambiguation(aligned_meshes, T_initial, T_pca_list)
+    T_icp, gw_history = step4_groupwise_icp(aligned_meshes, file_list, args)
+    T_matrices = step5_global_bounding_box_normalize(aligned_meshes, T_initial, T_icp)
+    step6_save_outputs(output_dir, file_list, aligned_meshes, T_matrices, gw_history, args)
 
 if __name__ == "__main__":
-    # ทำไม os._exit forced: --no-main-window ของ SlicerSALT บางครั้ง Qt event loop
-    # ไม่ run -> slicer.util.exit ผ่าน QTimer ไม่ trigger -> Slicer process ค้าง
-    # -> batch script รอ exit ไม่ได้ (เด้ง/hang) แก้โดย force-kill หลัง 1.5s
     import sys, os
     exit_code = 0
     with open(DEBUG_LOG, "w") as f:
