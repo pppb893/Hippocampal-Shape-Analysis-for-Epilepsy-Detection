@@ -11,6 +11,8 @@ def main():
     parser = argparse.ArgumentParser(description="Plot ICP convergence time-series")
     parser.add_argument("--output_dir", type=str, help="Output directory containing icp_convergence_history.json")
     parser.add_argument("--show", action="store_true", help="Display the plot window")
+    parser.add_argument("--ci_mode", choices=["auto", "sem", "sd"], default="auto",
+                        help="95% Band calculation mode: 'auto' (detects N), 'sem' (standard error), 'sd' (standard deviation)")
     args, unknown = parser.parse_known_args()
 
     if args.output_dir:
@@ -62,18 +64,28 @@ def main():
 
     mean_overlay = pw_dists if (has_pairwise and subj_pw_dists) else mean_dists
 
-    # Calculate 95% Confidence Interval across subjects for each iteration step
+    # Auto-detect CI calculation mode based on sample size N
+    # N < 100  -> Standard Error of the Mean (SEM) 95% CI
+    # N >= 100 -> Standard Deviation (SD) 95% Population Band
     if subjs:
         subj_matrix = np.array([dists for _, dists in subjs])
-        sem = np.std(subj_matrix, axis=0, ddof=1) / np.sqrt(num_subjs) if num_subjs > 1 else np.zeros(len(target_x))
-        ci95 = 1.96 * sem
+        std_arr = np.std(subj_matrix, axis=0, ddof=1)
         mean_arr = np.array(mean_overlay) if len(mean_overlay) == len(target_x) else np.mean(subj_matrix, axis=0)
-        ci_lower = np.maximum(0, mean_arr - ci95)
-        ci_upper = mean_arr + ci95
 
-        ax.fill_between(target_x, ci_lower, ci_upper, color='royalblue', alpha=0.25, label='95% Confidence Interval')
+        mode = getattr(args, 'ci_mode', 'auto')
+        if mode == 'sem' or (mode == 'auto' and num_subjs < 100):
+            sem = std_arr / np.sqrt(num_subjs) if num_subjs > 1 else np.zeros(len(target_x))
+            ci_lower = np.maximum(0, mean_arr - 1.96 * sem)
+            ci_upper = mean_arr + 1.96 * sem
+            ci_label = '95% Confidence Interval (SEM)'
+        else:
+            ci_lower = np.maximum(0, mean_arr - 1.96 * std_arr)
+            ci_upper = mean_arr + 1.96 * std_arr
+            ci_label = '95% Population Band (Mean ± 1.96 SD)'
 
-    # Group mean overlay (dashed line)
+        ax.fill_between(target_x, ci_lower, ci_upper, color='royalblue', alpha=0.22, label=ci_label)
+
+    # Group mean overlay (thick dashed line)
     ax.plot(target_x, mean_overlay, color='black', linestyle='--', marker='o', linewidth=3.2, markersize=6, label='Group Mean Distance')
     ax.set_xlabel(target_xlabel, fontsize=12, fontweight='bold')
     ax.set_ylabel('Pairwise ICP Distance to Template', fontsize=12, fontweight='bold')
