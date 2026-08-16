@@ -78,6 +78,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory containing spharm_results/")
+    parser.add_argument("--n_components", type=int, default=10,
+                        help="Number of PLS-DA components to extract (default: 10)")
     parser.add_argument("--show", action="store_true",
                         help="Display the PLS-DA plot window")
     args, unknown = parser.parse_known_args()
@@ -178,19 +180,20 @@ def main():
         else:         # Normal (Healthy Control or Contralateral TLE)
             Y[i, 0] = 1.0
 
-    # 4. Perform PLS-DA (PLSRegression with 3 components to support 3D visualization)
-    print("Running PLS-DA (PLSRegression with 10 components)...")
-    pls = PLSRegression(n_components=10)
+    # 4. Perform PLS-DA (PLSRegression with n_components)
+    n_comp = min(args.n_components, D, N)
+    print(f"Running PLS-DA (PLSRegression with {n_comp} components)...")
+    pls = PLSRegression(n_components=n_comp)
     X_scores, _ = pls.fit_transform(coef_vectors, Y)
 
     # 5. Save Scores to CSV
     scores_csv = os.path.join(plsda_dir, "plsda_scores.csv")
     with open(scores_csv, 'w', newline='') as f:
         writer = csv.writer(f)
-        header = ["Subject"] + [f"PLS-DA {k}" for k in range(1, 11)] + ["Group", "Class"]
+        header = ["Subject"] + [f"PLS-DA {k}" for k in range(1, n_comp + 1)] + ["Group", "Class"]
         writer.writerow(header)
         for i in range(N):
-            scores_row = [subject_names[i]] + [f"{X_scores[i,j]:.8f}" for j in range(10)] + [groups[i], classes[i]]
+            scores_row = [subject_names[i]] + [f"{X_scores[i,j]:.8f}" for j in range(n_comp)] + [groups[i], classes[i]]
             writer.writerow(scores_row)
     print(f"Saved PLS-DA scores to: {scores_csv}")
 
