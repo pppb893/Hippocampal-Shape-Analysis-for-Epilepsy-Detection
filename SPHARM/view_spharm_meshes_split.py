@@ -8,29 +8,14 @@ import tkinter as tk
 from tkinter import filedialog
 import numpy as np
 
-
-# =============================================================================
-# Anatomical landmark detection (copied from realign_spharm.py)
-# =============================================================================
-
 def find_landmarks_by_position(pts):
-    """
-    หา 4 landmark indices ตาม canonical position (สำหรับ realigned mesh).
-
-    หลัง realign — canonical คือ:
-      HEAD = +Z   TAIL = -Z   LAT = +X   MED = -X
-
-    -> ใช้ argmax/argmin ในแต่ละแกน → label คงที่ ไม่ flip อีก
-    """
     head_idx = int(np.argmax(pts[:, 2]))
     tail_idx = int(np.argmin(pts[:, 2]))
     lateral_idx = int(np.argmax(pts[:, 0]))
     medial_idx = int(np.argmin(pts[:, 0]))
     return head_idx, tail_idx, lateral_idx, medial_idx
 
-
 def find_anatomical_landmarks(pts):
-    """หา 4 anatomical landmarks: head, tail, lateral, medial (สำหรับ non-realigned)"""
     centroid = pts.mean(axis=0)
     pts_c = pts - centroid
     _, _, Vt = np.linalg.svd(pts_c, full_matrices=False)
@@ -70,18 +55,11 @@ def find_anatomical_landmarks(pts):
     medial_idx = int(np.argmin(proj_curl))
     return head_idx, tail_idx, lateral_idx, medial_idx
 
-
 def poly_points_numpy(poly):
     n = poly.GetNumberOfPoints()
     return np.array([poly.GetPoint(i) for i in range(n)])
 
-
-# =============================================================================
-# IO helpers
-# =============================================================================
-
 def load_polydata_smoothed(filepath):
-    """อ่าน .vtk + compute normals (smooth shading)"""
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(filepath)
     reader.Update()
@@ -101,17 +79,7 @@ def load_polydata_smoothed(filepath):
     except Exception:
         return poly
 
-
-# =============================================================================
-# Viewer
-# =============================================================================
-
 class SpharmMeshViewer:
-    """
-    Viewer สำหรับตรวจ SPHARM mesh (แยกซ้าย-ขวา ตามกลุ่มและสี)
-      - OVERLAY  : ซ้อนแยกซ้าย-ขวา สีน้ำเงินฝั่งซ้าย สีแดงฝั่งขวา
-      - SLIDESHOW: เปิดทีละตัว + mean shape เป็น wireframe อ้างอิง
-    """
 
     MODE_OVERLAY = "OVERLAY"
     MODE_SLIDESHOW = "SLIDESHOW"
@@ -121,7 +89,6 @@ class SpharmMeshViewer:
     def __init__(self, spharm_dir):
         self.spharm_dir = spharm_dir.replace("\\", "/")
 
-        # prefer realigned, fall back to ellalign
         files = sorted(glob.glob(os.path.join(self.spharm_dir,
                                               "*_SPHARM_realigned.vtk")))
         source = "realigned"
@@ -132,7 +99,6 @@ class SpharmMeshViewer:
         if not files:
             files = sorted(glob.glob(os.path.join(self.spharm_dir,
                                                   "*_SPHARM.vtk")))
-            # filter out ellalign/grid/realigned variants
             files = [f for f in files
                      if not any(s in os.path.basename(f)
                                 for s in ("_ellalign", "_grid", "_realigned",
@@ -148,7 +114,6 @@ class SpharmMeshViewer:
         self.source = source
         print(f"Found {len(files)} '{source}' meshes in {self.spharm_dir}")
 
-        # state
         self.current_idx = 0
         self.mode = self.MODE_OVERLAY
         self.wireframe = False
@@ -156,7 +121,6 @@ class SpharmMeshViewer:
         self.show_mean = True
         self.show_landmarks = True
 
-        # load
         self.meshes = []
         self.basenames = []
         for i, f in enumerate(files):
@@ -175,7 +139,6 @@ class SpharmMeshViewer:
             print("[ERROR] No valid meshes loaded.")
             return
 
-        # คำนวณระยะห่าง (shift_amount) จากขนาดเฉลี่ยของ Mesh
         x_mins = []
         x_maxs = []
         for poly in self.meshes:
@@ -190,8 +153,6 @@ class SpharmMeshViewer:
         self.setup_vtk()
         self.build_actors()
         self.apply_mode()
-
-    # ---------------- VTK scaffolding ----------------
 
     def setup_vtk(self):
         self.renderer = vtk.vtkRenderer()
@@ -208,7 +169,6 @@ class SpharmMeshViewer:
         self.interactor.SetRenderWindow(self.render_window)
         self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
-        # info overlay (top-left)
         self.text_actor = vtk.vtkTextActor()
         tp = self.text_actor.GetTextProperty()
         tp.SetFontSize(16)
@@ -219,7 +179,6 @@ class SpharmMeshViewer:
         self.text_actor.GetPositionCoordinate().SetValue(0.02, 0.90)
         self.renderer.AddActor2D(self.text_actor)
 
-        # help overlay (bottom-left)
         help_actor = vtk.vtkTextActor()
         hp = help_actor.GetTextProperty()
         hp.SetFontSize(12)
@@ -235,7 +194,6 @@ class SpharmMeshViewer:
         )
         self.renderer.AddActor2D(help_actor)
 
-        # camera-follower orientation axes
         axes_marker = vtk.vtkAxesActor()
         axes_marker.SetXAxisLabelText("X")
         axes_marker.SetYAxisLabelText("Y")
@@ -247,7 +205,6 @@ class SpharmMeshViewer:
         self.axes_widget.SetEnabled(1)
         self.axes_widget.InteractiveOff()
 
-        # world axes at origin
         world_axes = vtk.vtkAxesActor()
         world_axes.SetTotalLength(0.6, 0.6, 0.6)
         world_axes.AxisLabelsOff()
@@ -258,7 +215,6 @@ class SpharmMeshViewer:
             ax_prop.SetLineWidth(2)
         self.renderer.AddActor(world_axes)
 
-        # reference box (Left and Right)
         for offset_x in (-self.shift_amount, self.shift_amount):
             outline = vtk.vtkOutlineSource()
             h = self.REF_BOX_HALF
@@ -273,7 +229,6 @@ class SpharmMeshViewer:
             out_actor.GetProperty().SetLineWidth(1)
             self.renderer.AddActor(out_actor)
 
-        # observers
         self.interactor.AddObserver("KeyPressEvent", self.on_key_press)
         self.interactor.AddObserver("MouseWheelForwardEvent", self.on_wheel_forward)
         self.interactor.AddObserver("MouseWheelBackwardEvent", self.on_wheel_backward)
@@ -288,24 +243,23 @@ class SpharmMeshViewer:
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             
-            # Classify by name to match scatter plot coloring (Red/Blue only)
             name = self.basenames[i]
             is_left_side = name.startswith("left_") or name.startswith("lh_") or "_lh" in name.lower()
             name_upper = name.upper()
             if "_HEALTHY" in name_upper or "HEALTHY" in name_upper or "HFH_" in name_upper or "NORMAL" in name_upper:
-                r, g, b = (0.2549, 0.4118, 0.8824)  # royalblue (blue = Normal)
+                r, g, b = (0.2549, 0.4118, 0.8824)
                 is_red = False
             elif (is_left_side and "LEFT-TLE" in name_upper) or (not is_left_side and "RIGHT-TLE" in name_upper):
-                r, g, b = (0.8627, 0.0784, 0.2353)  # crimson (red = TLE)
+                r, g, b = (0.8627, 0.0784, 0.2353)
                 is_red = True
             elif (is_left_side and "RIGHT-TLE" in name_upper) or (not is_left_side and "LEFT-TLE" in name_upper):
-                r, g, b = (0.2549, 0.4118, 0.8824)  # royalblue (blue)
+                r, g, b = (0.2549, 0.4118, 0.8824)
                 is_red = False
             elif "TLE" in name_upper:
-                r, g, b = (0.8627, 0.0784, 0.2353)  # crimson (red = TLE)
+                r, g, b = (0.8627, 0.0784, 0.2353)
                 is_red = True
             else:
-                r, g, b = (0.5, 0.5, 0.5)            # gray
+                r, g, b = (0.5, 0.5, 0.5)
                 is_red = False
 
             prop = actor.GetProperty()
@@ -315,14 +269,12 @@ class SpharmMeshViewer:
             prop.SetDiffuse(0.75)
             prop.SetSpecular(0.15)
             
-            # Position shift: Blue to Left, Red to Right
             offset_x = self.shift_amount if is_red else -self.shift_amount
             actor.SetPosition(offset_x, 0, 0)
             
             self.renderer.AddActor(actor)
             self.actors.append(actor)
 
-        # Mean shape: render twice (left and right)
         self.mean_actors = []
         if self.mean_poly is not None:
             for offset_x in (-self.shift_amount, self.shift_amount):
@@ -340,16 +292,13 @@ class SpharmMeshViewer:
                 self.renderer.AddActor(actor)
                 self.mean_actors.append(actor)
 
-        # ------------------------------------------------------------
-        # Landmark dots
-        # ------------------------------------------------------------
         self.landmark_actors_per_subject = []
         sphere_radius = self._estimate_landmark_dot_radius()
         landmark_colors = [
-            (1.0, 0.25, 0.25),   # head 470 - red (+Z)
-            (0.25, 0.45, 1.0),   # tail 276 - blue (-Z)
-            (1.0,  1.0,  0.3),   # index 0  - yellow (-X)
-            (0.3,  1.0,  0.3),   # opp 0    - green (+X)
+            (1.0, 0.25, 0.25),
+            (0.25, 0.45, 1.0),
+            (1.0,  1.0,  0.3),
+            (0.3,  1.0,  0.3),
         ]
         
         fixed_indices = (470, 276, 0, 272)
@@ -391,7 +340,6 @@ class SpharmMeshViewer:
                 sp.SetAmbient(0.6)
                 sp.SetDiffuse(0.4)
                 
-                # Apply position shift
                 s_actor.SetPosition(offset_x, 0, 0)
                 
                 self.renderer.AddActor(s_actor)
@@ -406,8 +354,6 @@ class SpharmMeshViewer:
         avg_diag = diag_total / max(1, len(self.meshes))
         return max(avg_diag * 0.02, 0.01)
 
-    # ---------------- modes ----------------
-
     def apply_mode(self):
         for i, a in enumerate(self.actors):
             prop = a.GetProperty()
@@ -418,7 +364,7 @@ class SpharmMeshViewer:
             if self.mode == self.MODE_OVERLAY:
                 a.SetVisibility(True)
                 prop.SetOpacity(self.opacity_overlay)
-            else:  # slideshow
+            else:
                 a.SetVisibility(i == self.current_idx)
                 prop.SetOpacity(1.0)
                 
@@ -449,7 +395,6 @@ class SpharmMeshViewer:
             name = self.basenames[self.current_idx]
             b = self.meshes[self.current_idx].GetBounds()
             n_pts = self.meshes[self.current_idx].GetNumberOfPoints()
-            # Check color category of the current slideshow mesh
             is_red = self.actors[self.current_idx].GetProperty().GetColor()[0] > 0.5
             side_str = "Right (Diseased)" if is_red else "Left (Normal)"
             txt = (
@@ -469,8 +414,6 @@ class SpharmMeshViewer:
         cam.SetViewUp(0, 0, 1)
         self.renderer.ResetCamera()
         self.render_window.Render()
-
-    # ---------------- events ----------------
 
     def on_wheel_forward(self, obj, event):
         if self.mode == self.MODE_SLIDESHOW:
@@ -542,11 +485,6 @@ class SpharmMeshViewer:
         self.interactor.Initialize()
         self.interactor.Start()
 
-
-# =============================================================================
-# Main
-# =============================================================================
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--spharm_dir", default=None,
@@ -567,7 +505,6 @@ def main():
         print("No folder selected.")
         return
 
-    # ถ้า user เลือก output_xxx (parent) -> เข้าไปใน spharm_results subfolder
     if os.path.basename(spharm_dir.rstrip("\\/")).lower() != "spharm_results":
         candidate = os.path.join(spharm_dir, "spharm_results")
         if os.path.isdir(candidate):
@@ -575,7 +512,6 @@ def main():
 
     viewer = SpharmMeshViewer(spharm_dir)
     viewer.start()
-
 
 if __name__ == "__main__":
     main()

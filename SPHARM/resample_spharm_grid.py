@@ -6,11 +6,9 @@ import re
 import sys
 
 def parse_coef(filename):
-    """Parses SPHARM-PDM .coef file format."""
     with open(filename, 'r') as f:
         content = f.read()
     
-    # Match all triplets {x, y, z}
     pattern = re.compile(r"\{([-+]?[\d\.eE+-]+),\s*([-+]?[\d\.eE+-]+),\s*([-+]?[\d\.eE+-]+)\}")
     matches = pattern.findall(content)
     
@@ -18,7 +16,6 @@ def parse_coef(filename):
     for m in matches:
         coeffs.append([float(x) for x in m])
     
-    # Get num coeffs from first number e.g. { 169, ...
     num_match = re.search(r"\{\s*(\d+)", content)
     if num_match:
         num_coeffs = int(num_match.group(1))
@@ -27,11 +24,6 @@ def parse_coef(filename):
     return coeffs
 
 def evaluate_spharm(coeffs_list, L, theta_grid, phi_grid):
-    """
-    Evaluates SPHARM surface on a regular grid.
-    theta_grid: polar angles (0 to pi)
-    phi_grid: azimuthal angles (0 to 2pi)
-    """
     THETA, PHI = np.meshgrid(theta_grid, phi_grid, indexing='ij')
     
     X = np.zeros_like(THETA)
@@ -40,9 +32,7 @@ def evaluate_spharm(coeffs_list, L, theta_grid, phi_grid):
     
     idx = 0
     for l in range(L + 1):
-        # m = 0
         c = coeffs_list[idx]
-        # Y_l,0 is real
         y = sp.sph_harm(0, l, PHI, THETA).real
         X += c[0] * y
         Y += c[1] * y
@@ -50,19 +40,13 @@ def evaluate_spharm(coeffs_list, L, theta_grid, phi_grid):
         idx += 1
         
         for m in range(1, l + 1):
-            # Real part (cosine)
             cr = coeffs_list[idx]
             idx += 1
-            # Imaginary part (sine)
             ci = coeffs_list[idx]
             idx += 1
             
-            # Complex SH Y_l,m
             y_comp = sp.sph_harm(m, l, PHI, THETA)
             
-            # SPHARM-PDM Real Basis: 
-            # sqrt(2)*Re(Ylm) for the 'real' coefficient
-            # sqrt(2)*Im(Ylm) for the 'imag' coefficient
             factor = np.sqrt(2)
             
             X += factor * (cr[0] * y_comp.real + ci[0] * y_comp.imag)
@@ -72,7 +56,6 @@ def evaluate_spharm(coeffs_list, L, theta_grid, phi_grid):
     return X, Y, Z
 
 def save_grid_vtk(X, Y, Z, theta_deg, phi_deg, output_path):
-    """Saves the grid as a VTK Structured Grid / PolyData."""
     num_theta = X.shape[0]
     num_phi = X.shape[1]
     
@@ -93,7 +76,6 @@ def save_grid_vtk(X, Y, Z, theta_deg, phi_deg, output_path):
     poly.GetPointData().AddArray(theta_arr)
     poly.GetPointData().AddArray(phi_arr)
     
-    # Create connectivity (Quads)
     cells = vtk.vtkCellArray()
     for i in range(num_theta - 1):
         for j in range(num_phi):
@@ -132,16 +114,12 @@ if __name__ == "__main__":
         sys.exit(1)
         
     coeffs = parse_coef(input_coef)
-    # Number of coeffs = (L+1)^2
     L = int(np.sqrt(len(coeffs))) - 1
     
-    # Create Grid (More robust generation to avoid missing points due to precision)
     theta_deg = np.linspace(0, 180, int(180/theta_step) + 1)
-    phi_deg = np.linspace(0, 360, int(360/phi_step) + 1)[:-1] # 0 to 351, exclude 360 because it's same as 0
+    phi_deg = np.linspace(0, 360, int(360/phi_step) + 1)[:-1]
     
-    # Debug: verify 270 is there
     if not any(np.isclose(phi_deg, 270)):
-        # Fallback to manual check if needed, but linspace is usually safe
         pass
 
     X, Y, Z = evaluate_spharm(coeffs, L, np.radians(theta_deg), np.radians(phi_deg))
