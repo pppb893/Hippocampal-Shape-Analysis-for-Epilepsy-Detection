@@ -153,13 +153,21 @@ def run_batch_spharm():
     parser.add_argument("--reference_template", type=str, default=None,
                         help="Path to reference _SPHARM.vtk used as regTemplate/flipTemplate. "
                              "If omitted, auto-picks the first subject's existing _SPHARM.vtk.")
-    parser.add_argument("--regenerate_spharm_only", action="store_true",
-                        help="Skip SegPostProcess and GenParaMesh — re-run only ParaToSPHARMMesh "
-                             "from existing _para.vtk and _surf.vtk files. Much faster (~5x).")
+    parser.add_argument("--num_iterations", type=int, default=None,
+                        help="Number of iterations for GenParaMesh (default: 1000)")
+    parser.add_argument("--subdiv_level", type=int, default=None,
+                        help="Subdivision level for ParaToSPHARMMesh (default: 10)")
+    parser.add_argument("--spharm_degree", type=int, default=None,
+                        help="SPHARM degree for ParaToSPHARMMesh (default: 12)")
     args, unknown = parser.parse_known_args()
 
-    # SPHARM params: fast vs production
-    if args.fast:
+    # SPHARM params: custom vs fast vs production
+    if args.num_iterations is not None or args.subdiv_level is not None or args.spharm_degree is not None:
+        NUM_ITER = args.num_iterations if args.num_iterations is not None else (200 if args.fast else 1000)
+        SUBDIV   = args.subdiv_level if args.subdiv_level is not None else (5 if args.fast else 10)
+        DEGREE   = args.spharm_degree if args.spharm_degree is not None else (6 if args.fast else 12)
+        MODE_TAG = "CUSTOM"
+    elif args.fast:
         NUM_ITER = 200
         SUBDIV   = 5      # -> 252 points (vs 1002)
         DEGREE   = 6      # SH coefficients
