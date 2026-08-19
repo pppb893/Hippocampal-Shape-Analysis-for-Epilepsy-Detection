@@ -35,7 +35,7 @@ foreach ($script in $scripts) {
     
     Push-Location $script_dir
     
-    $cmd = "python $script_name *>&1 | Out-File -FilePath '$log_file' -Encoding UTF8"
+    $cmd = "uv run $deps $script_name *>&1 | Out-File -FilePath '$log_file' -Encoding UTF8"
     Invoke-Expression $cmd
     
     Pop-Location

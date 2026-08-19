@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Continue"
 
-$base_dir = "c:\Users\jckky\OneDrive\Desktop\test2\dataset\combind_methode"
+$base_dir = $PSScriptRoot
 $logs_dir = Join-Path $base_dir "logs"
 if (-Not (Test-Path $logs_dir)) {
     New-Item -ItemType Directory -Force -Path $logs_dir | Out-Null
