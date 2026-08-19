@@ -8,21 +8,12 @@ import tkinter as tk
 from tkinter import filedialog
 import numpy as np
 
-
-# =============================================================================
-# Anatomical landmark detection (copied from realign_spharm.py)
-# =============================================================================
-
 def find_landmarks_by_position(pts):
-    """
-    หา 4 landmark indices ตาม canonical position (สำหรับ realigned mesh).
-    """
     head_idx = int(np.argmax(pts[:, 2]))
     tail_idx = int(np.argmin(pts[:, 2]))
     lateral_idx = int(np.argmax(pts[:, 0]))
     medial_idx = int(np.argmin(pts[:, 0]))
     return head_idx, tail_idx, lateral_idx, medial_idx
-
 
 def find_anatomical_landmarks(pts):
     centroid = pts.mean(axis=0)
@@ -64,15 +55,9 @@ def find_anatomical_landmarks(pts):
     medial_idx = int(np.argmin(proj_curl))
     return head_idx, tail_idx, lateral_idx, medial_idx
 
-
 def poly_points_numpy(poly):
     n = poly.GetNumberOfPoints()
     return np.array([poly.GetPoint(i) for i in range(n)])
-
-
-# =============================================================================
-# IO helpers
-# =============================================================================
 
 def load_polydata_smoothed(filepath):
     reader = vtk.vtkPolyDataReader()
@@ -90,7 +75,6 @@ def load_polydata_smoothed(filepath):
     normals.ComputeCellNormalsOff()
     normals.Update()
     return normals.GetOutput()
-
 
 def create_mean_polydata(template_poly, mean_coords):
     if mean_coords is None or template_poly is None:
@@ -115,16 +99,7 @@ def create_mean_polydata(template_poly, mean_coords):
     
     return normals.GetOutput()
 
-
-# =============================================================================
-# Viewer
-# =============================================================================
-
 class SpharmMeanViewer:
-    """
-    Viewer สำหรับเปรียบเทียบ Mean Shape ของกลุ่มปกติ (น้ำเงิน) และกลุ่มโรค (แดง) เคียงข้างกัน
-    พร้อมแสดงเส้น Displacement Vectors ของแต่ละฝั่งเพื่อเปรียบเทียบ
-    """
 
     MODE_OVERLAY = "OVERLAY"
     MODE_SLIDESHOW = "SLIDESHOW"
@@ -134,7 +109,6 @@ class SpharmMeanViewer:
     def __init__(self, spharm_dir):
         self.spharm_dir = spharm_dir.replace("\\", "/")
 
-        # prefer realigned, fall back to ellalign
         files = sorted(glob.glob(os.path.join(self.spharm_dir,
                                               "*_SPHARM_realigned.vtk")))
         source = "realigned"
@@ -160,7 +134,6 @@ class SpharmMeanViewer:
         self.source = source
         print(f"Found {len(files)} '{source}' meshes in {self.spharm_dir}")
 
-        # state
         self.current_idx = 0
         self.mode = self.MODE_OVERLAY
         self.wireframe = False
@@ -168,7 +141,6 @@ class SpharmMeanViewer:
         self.show_vectors = True
         self.show_landmarks = False
 
-        # load and classify coordinates
         self.basenames = []
         blue_points = []
         red_points = []
@@ -187,7 +159,6 @@ class SpharmMeanViewer:
             self.basenames.append(name)
             
             is_left_side = name.startswith("left_")
-            # Classification
             if "_Healthy" in name or "HFH_" in name:
                 is_red = False
             elif (is_left_side and "_Left-TLE" in name) or (not is_left_side and "_Right-TLE" in name):
@@ -207,7 +178,6 @@ class SpharmMeanViewer:
             print("[ERROR] No valid meshes loaded.")
             return
 
-        # 1. คำนวณพิกัดเฉลี่ยของแต่ละกลุ่ม
         print(f"Computing Mean Shape for Normal group (N={len(blue_points)})...")
         self.mean_blue_coords = np.mean(blue_points, axis=0) if blue_points else None
         print(f"Computing Mean Shape for Diseased group (N={len(red_points)})...")
@@ -217,11 +187,9 @@ class SpharmMeanViewer:
             print("[ERROR] Need both Normal and Diseased groups to compute means.")
             return
 
-        # 2. สร้าง PolyData ของ Mean ทั้งสอง
         self.mean_blue_poly = create_mean_polydata(template_poly, self.mean_blue_coords)
         self.mean_red_poly = create_mean_polydata(template_poly, self.mean_red_coords)
 
-        # 3. คำนวณ Displacement Vector และ Magnitude ของจุดแต่ละจุด (ก่อนการ shift ตน.)
         displacement_vectors_blue = []
         displacement_vectors_red = []
         distances = []
@@ -230,8 +198,8 @@ class SpharmMeanViewer:
             p_red = self.mean_red_coords[i]
             vec = p_red - p_blue
             dist = np.linalg.norm(vec)
-            displacement_vectors_blue.append(vec)     # Normal -> Diseased (ทิศชี้ไปหาสีแดง)
-            displacement_vectors_red.append(-vec)     # Diseased -> Normal (ทิศชี้กลับมาสีน้ำเงิน)
+            displacement_vectors_blue.append(vec)
+            displacement_vectors_red.append(-vec)
             distances.append(dist)
 
         self.max_dist = max(distances)
@@ -239,7 +207,6 @@ class SpharmMeanViewer:
         print(f"  Max displacement:  {self.max_dist:.4f}")
         print(f"  Mean displacement: {self.mean_dist:.4f}")
 
-        # แนบ Scalars และ Vectors ของทั้งสองฝั่ง
         scalars_blue = vtk.vtkDoubleArray()
         scalars_blue.SetName("DisplacementMagnitude")
         for val in distances:
@@ -282,19 +249,15 @@ class SpharmMeanViewer:
             self.mesh_colors.append((0.8627, 0.0784, 0.2353))
             self.mesh_is_red.append(True)
 
-        # คำนวณระยะห่าง (shift_amount) จากขนาดเฉลี่ยของ Mesh
         b = self.meshes[0].GetBounds()
         self.shift_amount = 1.1 * (b[1] - b[0])
 
-        # คำนวณ Scale Factor เริ่มต้นสำหรับหัวลูกศร (10% ของ mesh diagonal)
         mesh_diag = np.sqrt((b[1]-b[0])**2 + (b[3]-b[2])**2 + (b[5]-b[4])**2)
         self.arrow_scale = (mesh_diag * 0.1) / self.max_dist if self.max_dist > 1e-6 else 1.0
 
         self.setup_vtk()
         self.build_actors()
         self.apply_mode()
-
-    # ---------------- VTK scaffolding ----------------
 
     def setup_vtk(self):
         self.renderer = vtk.vtkRenderer()
@@ -316,7 +279,6 @@ class SpharmMeanViewer:
         self.interactor.SetRenderWindow(self.render_window)
         self.interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
-        # info overlay (top-left)
         self.text_actor = vtk.vtkTextActor()
         tp = self.text_actor.GetTextProperty()
         tp.SetFontSize(16)
@@ -327,7 +289,6 @@ class SpharmMeanViewer:
         self.text_actor.GetPositionCoordinate().SetValue(0.02, 0.90)
         self.renderer.AddActor2D(self.text_actor)
 
-        # help overlay (bottom-left)
         help_actor = vtk.vtkTextActor()
         hp = help_actor.GetTextProperty()
         hp.SetFontSize(12)
@@ -343,7 +304,6 @@ class SpharmMeanViewer:
         )
         self.renderer.AddActor2D(help_actor)
 
-        # camera-follower orientation axes
         axes_marker = vtk.vtkAxesActor()
         axes_marker.SetXAxisLabelText("X")
         axes_marker.SetYAxisLabelText("Y")
@@ -355,7 +315,6 @@ class SpharmMeanViewer:
         self.axes_widget.SetEnabled(1)
         self.axes_widget.InteractiveOff()
 
-        # world axes at origin
         world_axes = vtk.vtkAxesActor()
         world_axes.SetTotalLength(0.6, 0.6, 0.6)
         world_axes.AxisLabelsOff()
@@ -366,7 +325,6 @@ class SpharmMeanViewer:
             ax_prop.SetLineWidth(2)
         self.renderer.AddActor(world_axes)
 
-        # reference box (Left and Right)
         for offset_x in (-self.shift_amount, self.shift_amount):
             outline = vtk.vtkOutlineSource()
             h = self.REF_BOX_HALF
@@ -381,19 +339,16 @@ class SpharmMeanViewer:
             out_actor.GetProperty().SetLineWidth(1)
             self.renderer.AddActor(out_actor)
 
-        # observers
         self.interactor.AddObserver("KeyPressEvent", self.on_key_press)
         self.interactor.AddObserver("MouseWheelForwardEvent", self.on_wheel_forward)
         self.interactor.AddObserver("MouseWheelBackwardEvent", self.on_wheel_backward)
 
     def build_actors(self):
-        # 1. Lookup Table (Color Map): Blue (min) -> Cyan -> Green -> Yellow -> Red (max)
         self.lut = vtk.vtkLookupTable()
         self.lut.SetNumberOfTableValues(256)
-        self.lut.SetHueRange(0.6667, 0.0) # blue to red
+        self.lut.SetHueRange(0.6667, 0.0)
         self.lut.Build()
 
-        # 2. Color Bar Legend (ขวา)
         self.scalar_bar = vtk.vtkScalarBarActor()
         self.scalar_bar.SetLookupTable(self.lut)
         self.scalar_bar.SetTitle("Deformation (mm)" if "realigned" in self.source else "Deformation (units)")
@@ -407,7 +362,6 @@ class SpharmMeanViewer:
         self.scalar_bar.GetPositionCoordinate().SetValue(0.88, 0.15)
         self.renderer.AddActor2D(self.scalar_bar)
 
-        # 3. สร้าง Actor ของตัวเฉลี่ยซ้ายขวา
         self.actors = []
         for i, poly in enumerate(self.meshes):
             mapper = vtk.vtkPolyDataMapper()
@@ -432,7 +386,6 @@ class SpharmMeanViewer:
             self.renderer.AddActor(actor)
             self.actors.append(actor)
 
-        # 4. Glyph สำหรับหัวลูกศร
         self.arrow_source = vtk.vtkArrowSource()
         self.arrow_source.SetTipResolution(16)
         self.arrow_source.SetTipLength(0.25)
@@ -464,19 +417,18 @@ class SpharmMeanViewer:
             glyph_actor.SetMapper(glyph_mapper)
             glyph_actor.GetProperty().SetAmbient(0.3)
             glyph_actor.GetProperty().SetDiffuse(0.7)
-            glyph_actor.SetPosition(offset_x, 0, 0) # เลื่อนหัวลูกศรตามฝั่งของโมเดล
+            glyph_actor.SetPosition(offset_x, 0, 0)
             
             self.renderer.AddActor(glyph_actor)
             self.glyph_actors.append(glyph_actor)
 
-        # 5. Landmark dots
         self.landmark_actors_per_subject = []
         sphere_radius = self._estimate_landmark_dot_radius()
         landmark_colors = [
-            (1.0, 0.25, 0.25),   # head 470 - red (+Z)
-            (0.25, 0.45, 1.0),   # tail 276 - blue (-Z)
-            (1.0,  1.0,  0.3),   # index 0  - yellow (-X)
-            (0.3,  1.0,  0.3),   # opp 0    - green (+X)
+            (1.0, 0.25, 0.25),
+            (0.25, 0.45, 1.0),
+            (1.0,  1.0,  0.3),
+            (0.3,  1.0,  0.3),
         ]
         
         fixed_indices = (470, 276, 0, 272)
@@ -508,7 +460,6 @@ class SpharmMeanViewer:
                 sp.SetAmbient(0.6)
                 sp.SetDiffuse(0.4)
                 
-                # Apply position shift
                 s_actor.SetPosition(offset_x, 0, 0)
                 
                 self.renderer.AddActor(s_actor)
@@ -523,8 +474,6 @@ class SpharmMeanViewer:
         avg_diag = diag_total / max(1, len(self.meshes))
         return max(avg_diag * 0.02, 0.01)
 
-    # ---------------- modes ----------------
-
     def apply_mode(self):
         for i, a in enumerate(self.actors):
             prop = a.GetProperty()
@@ -535,11 +484,10 @@ class SpharmMeanViewer:
             if self.mode == self.MODE_OVERLAY:
                 a.SetVisibility(True)
                 prop.SetOpacity(self.opacity_overlay)
-            else:  # slideshow
+            else:
                 a.SetVisibility(i == self.current_idx)
                 prop.SetOpacity(1.0)
 
-        # ควบคุมการแสดงผลลูกศร
         for i, ga in enumerate(self.glyph_actors):
             if self.mode == self.MODE_OVERLAY:
                 ga.SetVisibility(self.show_vectors)
@@ -589,8 +537,6 @@ class SpharmMeanViewer:
         self.renderer.ResetCamera()
         self.render_window.Render()
 
-    # ---------------- events ----------------
-
     def on_wheel_forward(self, obj, event):
         if self.mode == self.MODE_SLIDESHOW:
             self.current_idx = (self.current_idx + 1) % len(self.actors)
@@ -638,7 +584,7 @@ class SpharmMeanViewer:
             for g in self.glyphs:
                 g.SetScaleFactor(self.arrow_scale)
             self.apply_mode()
-        elif key in ("plus", "equal", "kp_add") and not obj.GetShiftKey(): # Opacity if no bracket
+        elif key in ("plus", "equal", "kp_add") and not obj.GetShiftKey():
             self.opacity_overlay = min(1.0, self.opacity_overlay + 0.05)
             self.apply_mode()
         elif key in ("minus", "underscore", "kp_subtract"):
@@ -672,11 +618,6 @@ class SpharmMeanViewer:
         self.interactor.Initialize()
         self.interactor.Start()
 
-
-# =============================================================================
-# Main
-# =============================================================================
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--spharm_dir", default=None,
@@ -697,7 +638,6 @@ def main():
         print("No folder selected.")
         return
 
-    # ถ้า user เลือก output_xxx (parent) -> เข้าไปใน spharm_results subfolder
     if os.path.basename(spharm_dir.rstrip("\\/")).lower() != "spharm_results":
         candidate = os.path.join(spharm_dir, "spharm_results")
         if os.path.isdir(candidate):
@@ -705,7 +645,6 @@ def main():
 
     viewer = SpharmMeanViewer(spharm_dir)
     viewer.start()
-
 
 if __name__ == "__main__":
     main()

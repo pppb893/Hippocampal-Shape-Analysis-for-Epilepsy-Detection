@@ -2,13 +2,16 @@ import sys
 import time
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter, QPen
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QLocale
 
 from ui_main_window import MainWindow
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    
+    # Set default locale to C/English to force standard Arabic numerals (1000, 10, 12)
+    QLocale.setDefault(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
     
     # ----------------------------------------------------
     # Splash Screen (Slicer/SlicerSALT style startup)
