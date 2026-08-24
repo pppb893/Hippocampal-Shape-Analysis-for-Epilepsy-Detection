@@ -142,6 +142,14 @@ def run_pipeline():
     print(f"*** Final Test Accuracy: {test_acc:.4f} ***\n")
     print("Classification Report:")
     print(classification_report(y_test, y_pred))
+    # Save predictions for reuse
+    os.makedirs('results', exist_ok=True)
+    np.savez('results/test_predictions.npz',
+             y_test=np.array(y_test),
+             y_pred=np.array(y_pred),
+             y_prob=np.array(y_prob))
+    print("Saved test predictions to 'results/test_predictions.npz'")
+
 
     # Confusion Matrix
     cm = confusion_matrix(y_test, y_pred)
@@ -156,7 +164,7 @@ def run_pipeline():
     plt.close()
     print("Saved Confusion Matrix to 'plots/confusion_matrix.png'")
 
-        # Bootstrapping for 95% Confidence Interval
+    # True Bootstrapping (100% size, replace=True) + Confusion Matrix
     n_bootstraps = 1000
     tprs_array = []
     base_fpr = np.linspace(0, 1, 101)
@@ -164,16 +172,55 @@ def run_pipeline():
     y_test_arr = np.array(y_test)
     y_prob_arr = np.array(y_prob)
 
+    sample_size = len(y_test_arr)
+
+    # Store confusion matrix results for each bootstrap round
+    os.makedirs('results', exist_ok=True)
+    bootstrap_cm_results = []
+
     np.random.seed(42)
     for i in range(n_bootstraps):
-        indices = np.random.randint(0, len(y_test_arr), len(y_test_arr))
+        # Sample WITH replacement
+        indices = np.random.choice(len(y_test_arr), sample_size, replace=True)
         if len(np.unique(y_test_arr[indices])) < 2:
             continue
 
-        fpr_b, tpr_b, _ = roc_curve(y_test_arr[indices], y_prob_arr[indices])
-        tpr_interp = np.interp(base_fpr, fpr_b, tpr_b)
-        tpr_interp[0] = 0.0
-        tprs_array.append(tpr_interp)
+        y_test_b = y_test_arr[indices]
+        y_prob_b = y_prob_arr[indices]
+        y_pred_b = (y_prob_b > 0.5).astype(int)
+
+        # Confusion matrix for this round
+        cm_b = confusion_matrix(y_test_b, y_pred_b, labels=[0, 1])
+        tn_b, fp_b, fn_b, tp_b = cm_b.ravel()
+        
+        acc_b = (tp_b + tn_b) / (tp_b + tn_b + fp_b + fn_b) if (tp_b + tn_b + fp_b + fn_b) > 0 else 0
+        sens_b = tp_b / (tp_b + fn_b) if (tp_b + fn_b) > 0 else 0
+        spec_b = tn_b / (tn_b + fp_b) if (tn_b + fp_b) > 0 else 0
+        prec_b = tp_b / (tp_b + fp_b) if (tp_b + fp_b) > 0 else 0
+        f1_b = 2 * prec_b * sens_b / (prec_b + sens_b) if (prec_b + sens_b) > 0 else 0
+
+        # ROC/AUC for this round
+        try:
+            fpr_b, tpr_b, _ = roc_curve(y_test_b, y_prob_b)
+            auc_b = auc(fpr_b, tpr_b)
+            tpr_interp = np.interp(base_fpr, fpr_b, tpr_b)
+            tpr_interp[0] = 0.0
+            tprs_array.append(tpr_interp)
+        except:
+            auc_b = float('nan')
+
+        bootstrap_cm_results.append({
+            'round': i + 1,
+            'TP': int(tp_b), 'TN': int(tn_b), 'FP': int(fp_b), 'FN': int(fn_b),
+            'Accuracy': round(acc_b, 4), 'Sensitivity': round(sens_b, 4),
+            'Specificity': round(spec_b, 4), 'F1': round(f1_b, 4),
+            'AUC': round(auc_b, 4) if not (auc_b != auc_b) else ''
+        })
+
+    # Save confusion matrix results to CSV
+    cm_df = pd.DataFrame(bootstrap_cm_results)
+    cm_df.to_csv('results/bootstrap_confusion_matrix.csv', index=False)
+    print(f"Saved bootstrap confusion matrix ({len(cm_df)} rounds) to 'results/bootstrap_confusion_matrix.csv'")
 
     tprs_array = np.array(tprs_array)
     mean_tprs = tprs_array.mean(axis=0)
@@ -185,9 +232,10 @@ def run_pipeline():
     original_fpr, original_tpr, _ = roc_curve(y_test_arr, y_prob_arr)
     roc_auc = auc(original_fpr, original_tpr)
 
-    # === Plot 1: Bootstrap Lines Version ===
+    # === Plot 1: True Bootstrap Lines Version ===
     plt.figure(figsize=(8, 6))
-    sample_indices = np.random.choice(len(tprs_array), size=100, replace=False)
+    n_plot = min(100, len(tprs_array))
+    sample_indices = np.random.choice(len(tprs_array), size=n_plot, replace=False)
     for i, idx in enumerate(sample_indices):
         if i == 0:
             plt.plot(base_fpr, tprs_array[idx], color='steelblue', lw=1, alpha=0.3, label='Bootstrap Samples')
@@ -200,27 +248,27 @@ def run_pipeline():
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve (Bootstrap Lines) - Test Set')
+    plt.title('ROC Curve (True Bootstrapping Lines) - Test Set')
     plt.legend(loc="lower right")
     plt.grid(True)
     plt.savefig('plots/roc_curve_lines.png')
     plt.close()
 
-    # === Plot 2: Shaded 95% CI Version ===
+    # === Plot 2: Shaded 95%% CI Version ===
     plt.figure(figsize=(8, 6))
     plt.plot(base_fpr, mean_tprs, color='darkorange', lw=2, label=f'Mean ROC (area = {roc_auc:.2f})')
-    plt.fill_between(base_fpr, tpr_lower, tpr_upper, color='grey', alpha=0.3, label='95% CI')
+    plt.fill_between(base_fpr, tpr_lower, tpr_upper, color='grey', alpha=0.3, label='95%% CI (Bootstrap)')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve (95% CI Shaded) - Test Set')
+    plt.title('ROC Curve (95%% CI Shaded - True Bootstrapping) - Test Set')
     plt.legend(loc="lower right")
     plt.grid(True)
     plt.savefig('plots/roc_curve_ci.png')
     plt.close()
-    
+
     print("Saved ROC curves to 'plots/roc_curve_lines.png' and 'plots/roc_curve_ci.png'")
 
     print("\nPipeline finished successfully! All files are in the 'plots' directory.")
