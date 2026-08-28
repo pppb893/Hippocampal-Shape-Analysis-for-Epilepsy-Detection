@@ -115,3 +115,6 @@ cd Model
 
 ## 🔬 Scientific Context
 This project leverages structural MRI to quantify **Hippocampal Sclerosis**, the most common neuropathological finding in Drug-Resistant Temporal Lobe Epilepsy. By moving beyond simple volumetric measurements (measuring just the size/volume) and utilizing SPHARM-PDM, we can localize exactly *where* on the surface the atrophy is occurring, providing a much higher diagnostic yield and offering powerful predictive features for machine learning pipelines.
+## 🤝 Acknowledgements & Credits
+- **FastSurfer:** Deep learning based neuroimaging pipeline for fast and robust brain segmentation. [https://github.com/Deep-MI/FastSurfer](https://github.com/Deep-MI/FastSurfer).
+- **SlicerSALT:** Open-source platform for conducting 3D shape analysis of anatomical structures. [https://salt.slicer.org/](https://salt.slicer.org/).
