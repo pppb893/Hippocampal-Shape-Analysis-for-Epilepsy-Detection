@@ -320,7 +320,7 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
         grid_vtk = f"{spharm_base}_SPHARM_grid.vtk"
 
         if os.path.exists(final_vtk) and os.path.exists(final_coef):
-            theta_step, phi_step = "9", "9"
+            theta_step, phi_step = "4.5", "4.5"
             sprint(f"  - SUCCESS: {basename} completed. Resampling to {theta_step}x{phi_step} degree grid...", log_file)
 
             resample_script = os.path.join(SCRIPT_DIR, "resample_spharm_grid.py")

@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSpl
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 
-from ui_left_panel import LeftPanel
-from ui_right_panel import RightPanel
+from LeftUI.left_panel import LeftPanel
+from RightUI.right_panel import RightPanel
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
 
         toolbar.addWidget(QLabel("  Modules: "))
         self.module_combo = QComboBox()
-        self.module_combo.addItems(["Data Importer", "ICP Registration", "SPHARM Processing", "PLS-DA Analysis", "Feature Extraction"])
+        self.module_combo.addItems(["Data Importer", "FastSurfer Segmentation", "ICP Registration", "SPHARM Processing", "PLS-DA Analysis", "Feature Extraction"])
         self.module_combo.setMinimumWidth(200)
         toolbar.addWidget(self.module_combo)
 

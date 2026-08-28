@@ -1,9 +1,9 @@
 import vtk
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtCore import pyqtSignal
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
-class RightPanel(QWidget):
+class VtkViewer(QWidget):
     signal_log_message = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -11,55 +11,19 @@ class RightPanel(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        right_layout = QVBoxLayout(self)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        # View Controller Toolbar (Slicer style blue bar)
-        view_toolbar = QWidget()
-        view_toolbar.setStyleSheet("background-color: #6A82D2; border-bottom: 1px solid #5A72C2;")
-        view_toolbar.setFixedHeight(28)
-        view_toolbar_layout = QHBoxLayout(view_toolbar)
-        view_toolbar_layout.setContentsMargins(5, 0, 5, 0)
-        view_toolbar_layout.setSpacing(2)
-        
-        pin_btn = QPushButton("📌")
-        pin_btn.setFixedSize(24, 24)
-        pin_btn.setStyleSheet("border: none; color: black; background: transparent;")
-        
-        num_label = QLabel("1")
-        num_label.setStyleSheet("color: black; font-weight: bold; border: none; padding-left: 2px; padding-right: 2px;")
-        
-        center_btn = QPushButton("⌖")
-        center_btn.setFixedSize(24, 24)
-        center_btn.setStyleSheet("border: none; color: black; background: transparent; font-size: 18px;")
-        center_btn.setToolTip("Reset Camera")
-        center_btn.clicked.connect(self.reset_vtk_camera)
-        
-        box_btn = QPushButton("☐")
-        box_btn.setFixedSize(24, 24)
-        box_btn.setStyleSheet("border: none; color: black; background: transparent; font-size: 18px; font-weight: bold;")
-        
-        view_toolbar_layout.addWidget(pin_btn)
-        view_toolbar_layout.addWidget(num_label)
-        view_toolbar_layout.addWidget(center_btn)
-        view_toolbar_layout.addWidget(box_btn)
-        view_toolbar_layout.addStretch()
-        
-        right_layout.addWidget(view_toolbar)
-        
-        # VTK Widget
         self.vtk_widget = QVTKRenderWindowInteractor(self)
-        right_layout.addWidget(self.vtk_widget)
+        layout.addWidget(self.vtk_widget)
 
-        # Setup VTK Rendering pipeline
         self.renderer = vtk.vtkRenderer()
         self.vtk_widget.GetRenderWindow().AddRenderer(self.renderer)
         self.interactor = self.vtk_widget.GetRenderWindow().GetInteractor()
         
         self.add_vtk_placeholder()
 
-    def reset_vtk_camera(self):
+    def reset_camera(self):
         if hasattr(self, 'renderer'):
             self.renderer.ResetCamera()
             self.vtk_widget.GetRenderWindow().Render()
@@ -71,13 +35,10 @@ class RightPanel(QWidget):
             self.vtk_widget.GetRenderWindow().Render()
 
     def add_vtk_placeholder(self):
-        """Adds a 3D placeholder to the VTK viewer with Slicer-like decorations."""
-        # 1. Gradient Background (Classic Slicer Style)
         self.renderer.SetBackground(0.1, 0.1, 0.2)
         self.renderer.SetBackground2(0.4, 0.4, 0.5)
         self.renderer.GradientBackgroundOn()
         
-        # 2. Create a hippocampus-like shape (Ellipsoid)
         sphere_source = vtk.vtkSphereSource()
         sphere_source.SetRadius(10.0)
         sphere_source.SetPhiResolution(60)
@@ -92,7 +53,6 @@ class RightPanel(QWidget):
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputConnection(transform_filter.GetOutputPort())
 
-        # Main mesh actor
         self.mesh_actor = vtk.vtkActor()
         self.mesh_actor.SetMapper(mapper)
         self.mesh_actor.GetProperty().SetColor(0.8, 0.6, 0.5)
@@ -101,7 +61,6 @@ class RightPanel(QWidget):
         self.mesh_actor.GetProperty().SetSpecular(0.2)
         self.renderer.AddActor(self.mesh_actor)
         
-        # 3. Add a Wireframe Bounding Box
         outline = vtk.vtkOutlineFilter()
         outline.SetInputConnection(transform_filter.GetOutputPort())
         outline_mapper = vtk.vtkPolyDataMapper()
@@ -111,7 +70,6 @@ class RightPanel(QWidget):
         outline_actor.GetProperty().SetColor(1, 1, 1)
         self.renderer.AddActor(outline_actor)
 
-        # 4. Add Orientation Marker
         self.axes_actor = vtk.vtkAxesActor()
         self.axes_widget = vtk.vtkOrientationMarkerWidget()
         self.axes_widget.SetOrientationMarker(self.axes_actor)
@@ -120,7 +78,6 @@ class RightPanel(QWidget):
         self.axes_widget.EnabledOn()
         self.axes_widget.InteractiveOff()
 
-        # 5. Add 3D Text Labels
         def add_3d_text(text, position):
             text_source = vtk.vtkVectorText()
             text_source.SetText(text)
@@ -138,7 +95,6 @@ class RightPanel(QWidget):
         add_3d_text("A", (-2, 18, 0))
         add_3d_text("P", (-2, -18, 0))
         
-        # Setup Title Overlay
         self.title_actor = vtk.vtkTextActor()
         self.title_actor.SetInput("Preview: Hippocampal Mesh (Placeholder)")
         self.title_actor.GetTextProperty().SetColor(1, 1, 1)
@@ -148,7 +104,6 @@ class RightPanel(QWidget):
         
         self.renderer.ResetCamera()
         
-        # Enable Clicking
         self.interactor_style = vtk.vtkInteractorStyleTrackballCamera()
         self.interactor.SetInteractorStyle(self.interactor_style)
         self.interactor_style.AddObserver("LeftButtonPressEvent", self.on_vtk_click)
