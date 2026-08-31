@@ -3,7 +3,7 @@ import glob
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, 
                              QLineEdit, QCheckBox, QGroupBox)
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 
 class ImportPanel(QWidget):
     signal_log_message = pyqtSignal(str)
@@ -22,12 +22,7 @@ class ImportPanel(QWidget):
         ig_layout = QVBoxLayout(import_group)
         ig_layout.setContentsMargins(10, 20, 10, 10)
         ig_layout.setSpacing(10)
-        btn_layout = QHBoxLayout()
-        btn_import_dir = QPushButton("Import from directory")
-        btn_import_csv = QPushButton("Import from CSV")
-        btn_layout.addWidget(btn_import_dir)
-        btn_layout.addWidget(btn_import_csv)
-        ig_layout.addLayout(btn_layout)
+
 
         dir_select_btn = QPushButton("📁 Choose Data Directory")
         dir_select_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; padding: 5px;")
@@ -53,23 +48,24 @@ class ImportPanel(QWidget):
         subj_layout = QVBoxLayout(subj_group)
         subj_layout.setContentsMargins(10, 20, 10, 10)
         subj_layout.setSpacing(10)
-        self.subjects_table = QTableWidget(0, 2)
-        self.subjects_table.setHorizontalHeaderLabels(["Subject name", "Consistency"])
+        self.subjects_table = QTableWidget(0, 1)
+        self.subjects_table.setHorizontalHeaderLabels(["Subject name"])
         self.subjects_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.subjects_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.subjects_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.subjects_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.subjects_table.itemSelectionChanged.connect(self.on_subject_selection_changed)
         subj_layout.addWidget(self.subjects_table)
         
         display_layout = QHBoxLayout()
-        self.display_selected_btn = QPushButton("Display Selected")
-        self.display_selected_btn.setStyleSheet("background-color: #3498db; color: white;")
-        self.display_selected_btn.clicked.connect(self.display_selected_subject)
+        
+        self.remove_selected_btn = QPushButton("Remove Selected")
+        self.remove_selected_btn.setStyleSheet("background-color: #e74c3c; color: white;")
+        self.remove_selected_btn.clicked.connect(self.remove_selected_subject)
         
         self.display_on_click_cb = QCheckBox("Display on click")
         self.display_on_click_cb.setChecked(True)
         
-        display_layout.addWidget(self.display_selected_btn)
+        display_layout.addWidget(self.remove_selected_btn)
         display_layout.addWidget(self.display_on_click_cb)
         subj_layout.addLayout(display_layout)
         
@@ -83,7 +79,6 @@ class ImportPanel(QWidget):
         if directory:
             self.folder_input.setText(directory)
             self.signal_log_message.emit(f"Selected directory: {directory}")
-            self.load_subjects_from_directory(directory)
 
     def on_import_clicked(self):
         directory = self.folder_input.text()
@@ -99,19 +94,36 @@ class ImportPanel(QWidget):
         for pattern in search_patterns:
             files.extend(glob.glob(os.path.join(directory, pattern)))
             
-        self.subjects_table.setRowCount(0)
-        
         if not files:
             self.signal_log_message.emit(f"No valid image/mesh files (*.nrrd, *.nii.gz, *.vtk) found in {directory}")
             return
             
-        self.signal_log_message.emit(f"Found {len(files)} files in directory.")
-        self.subjects_table.setRowCount(len(files))
+        # Prevent duplicates
+        existing_paths = set()
+        for i in range(self.subjects_table.rowCount()):
+            item = self.subjects_table.item(i, 0)
+            if item:
+                existing_paths.add(item.data(Qt.ItemDataRole.UserRole))
+                
+        new_files = [f for f in files if f not in existing_paths]
         
-        for row, filepath in enumerate(files):
+        if not new_files:
+            self.signal_log_message.emit(f"All files in {directory} are already imported.")
+            return
+            
+        self.signal_log_message.emit(f"Importing {len(new_files)} new files...")
+        
+        current_row_count = self.subjects_table.rowCount()
+        self.subjects_table.setRowCount(current_row_count + len(new_files))
+        
+        for i, filepath in enumerate(new_files):
+            row = current_row_count + i
             filename = os.path.basename(filepath)
-            self.subjects_table.setItem(row, 0, QTableWidgetItem(filename))
-            self.subjects_table.setItem(row, 1, QTableWidgetItem("OK"))
+            item = QTableWidgetItem(filename)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setData(Qt.ItemDataRole.UserRole, filepath)
+            
+            self.subjects_table.setItem(row, 0, item)
 
     def on_subject_selection_changed(self):
         if self.display_on_click_cb.isChecked():
@@ -122,8 +134,27 @@ class ImportPanel(QWidget):
         if not selected_items:
             return
         
-        row = selected_items[0].row()
-        subject_name = self.subjects_table.item(row, 0).text()
+        selected_rows = list(set([item.row() for item in selected_items]))
+        if len(selected_rows) > 1:
+            return  # Do not display if multiple subjects are selected
+            
+        row = selected_rows[0]
+        item = self.subjects_table.item(row, 0)
+        subject_name = item.text()
+        filepath = item.data(Qt.ItemDataRole.UserRole)
         
         self.signal_log_message.emit(f"Displaying subject: {subject_name}")
-        self.signal_subject_selected.emit(subject_name)
+        self.signal_subject_selected.emit(filepath)
+
+    def remove_selected_subject(self):
+        selected_items = self.subjects_table.selectedItems()
+        if not selected_items:
+            return
+            
+        selected_rows = sorted(list(set([item.row() for item in selected_items])), reverse=True)
+        
+        for row in selected_rows:
+            item = self.subjects_table.item(row, 0)
+            subject_name = item.text()
+            self.subjects_table.removeRow(row)
+            self.signal_log_message.emit(f"Removed subject from list: {subject_name}")
