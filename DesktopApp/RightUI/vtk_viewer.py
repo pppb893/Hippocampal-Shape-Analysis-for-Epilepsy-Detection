@@ -84,14 +84,17 @@ class VtkViewer(QWidget):
 
             mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputData(poly)
+            mapper.ScalarVisibilityOff()  # Prevent VTK from overriding our custom color with scalar data
             self.mesh_actor.SetMapper(mapper)
-
-            if hasattr(self, 'outline_actor'):
-                outline = vtk.vtkOutlineFilter()
-                outline.SetInputData(poly)
-                outline_mapper = vtk.vtkPolyDataMapper()
-                outline_mapper.SetInputConnection(outline.GetOutputPort())
-                self.outline_actor.SetMapper(outline_mapper)
+            
+            # Set color based on hemisphere
+            fname_lower = filename.lower()
+            if '_lh' in fname_lower or 'lh_' in fname_lower:
+                self.mesh_actor.GetProperty().SetColor(0.655, 0.737, 0.914)  # Light Blue (#A7BCE9)
+            elif '_rh' in fname_lower or 'rh_' in fname_lower:
+                self.mesh_actor.GetProperty().SetColor(1.0, 0.659, 0.482)    # Orange (#FFA87B)
+            else:
+                self.mesh_actor.GetProperty().SetColor(0.8, 0.6, 0.5)        # Default
 
             # Center the actor so it doesn't float away
             poly.ComputeBounds()
@@ -100,8 +103,6 @@ class VtkViewer(QWidget):
             cy = (bounds[2] + bounds[3]) / 2.0
             cz = (bounds[4] + bounds[5]) / 2.0
             self.mesh_actor.SetPosition(-cx, -cy, -cz)
-            if hasattr(self, 'outline_actor'):
-                self.outline_actor.SetPosition(-cx, -cy, -cz)
 
             self.renderer.ResetCamera()
             self.signal_log_message.emit(f"Loaded mesh from: {filename}")
@@ -123,12 +124,6 @@ class VtkViewer(QWidget):
         self.mesh_actor.GetProperty().SetDiffuse(0.8)
         self.mesh_actor.GetProperty().SetSpecular(0.2)
         self.renderer.AddActor(self.mesh_actor)
-        
-        outline_mapper = vtk.vtkPolyDataMapper()
-        self.outline_actor = vtk.vtkActor()
-        self.outline_actor.SetMapper(outline_mapper)
-        self.outline_actor.GetProperty().SetColor(1, 1, 1)
-        self.renderer.AddActor(self.outline_actor)
 
         self.axes_actor = vtk.vtkAxesActor()
         self.axes_widget = vtk.vtkOrientationMarkerWidget()
@@ -137,23 +132,6 @@ class VtkViewer(QWidget):
         self.axes_widget.SetViewport(0.0, 0.0, 0.2, 0.2)
         self.axes_widget.EnabledOn()
         self.axes_widget.InteractiveOff()
-
-        def add_3d_text(text, position):
-            text_source = vtk.vtkVectorText()
-            text_source.SetText(text)
-            text_mapper = vtk.vtkPolyDataMapper()
-            text_mapper.SetInputConnection(text_source.GetOutputPort())
-            text_actor = vtk.vtkActor()
-            text_actor.SetMapper(text_mapper)
-            text_actor.SetPosition(position)
-            text_actor.SetScale(4, 4, 4)
-            text_actor.GetProperty().SetColor(1.0, 1.0, 1.0)
-            self.renderer.AddActor(text_actor)
-            
-        add_3d_text("R", (-35, -2, 0))
-        add_3d_text("L", (32, -2, 0))
-        add_3d_text("A", (-2, 18, 0))
-        add_3d_text("P", (-2, -18, 0))
         
         self.title_actor = vtk.vtkTextActor()
         self.title_actor.SetInput("Preview: Hippocampal Mesh (Placeholder)")
@@ -190,11 +168,5 @@ class VtkViewer(QWidget):
         
         if picked_actor and hasattr(self, 'mesh_actor') and picked_actor == self.mesh_actor:
             self.signal_log_message.emit(f">>> 3D Mesh clicked at screen coordinates {click_pos}!")
-            
-            current_color = self.mesh_actor.GetProperty().GetColor()
-            if round(current_color[0], 2) == 0.80:
-                self.mesh_actor.GetProperty().SetColor(0.2, 0.8, 0.2)
-            else:
-                self.mesh_actor.GetProperty().SetColor(0.8, 0.6, 0.5)
                 
             self.vtk_widget.GetRenderWindow().Render()
