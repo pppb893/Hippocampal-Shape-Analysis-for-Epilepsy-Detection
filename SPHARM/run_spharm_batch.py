@@ -126,7 +126,7 @@ def parse_args():
     return args
 
 def init_logging(output_base_dir, input_dir, output_root, mode_tag, num_iter, subdiv, degree):
-    log_file = os.path.join(output_base_dir, "spharm_progress.log")
+    log_file = os.path.join(SCRIPT_DIR, "spharm_debug_log.txt")
     with open(log_file, 'w') as f:
         f.write(f"--- SPHARM Batch Mode Start: {datetime.now()} ---\n")
         f.write(f"Mode: {mode_tag} (iter={num_iter}, subdiv={subdiv}, degree={degree})\n")

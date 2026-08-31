@@ -76,7 +76,22 @@ if "%INPUT_DIR%"=="" (
 )
 
 for %%I in ("%INPUT_DIR%") do set "FOLDER_NAME=%%~nxI"
-set "OUTPUT_DIR=%PIPELINE_DIR%\output_%FOLDER_NAME%"
+
+echo.
+echo [0.5/5] SELECTING OUTPUT DIRECTORY...
+set "PS_CMD_OUT=Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select output folder'; $f.ShowDialog() | Out-Null; $f.SelectedPath"
+
+set "SELECTED_OUT="
+for /f "delims=" %%I in ('powershell -Command "%PS_CMD_OUT%"') do set "SELECTED_OUT=%%I"
+
+if "%SELECTED_OUT%"=="" (
+    echo.
+    echo [CANCELLED] No output folder selected. Exiting...
+    pause
+    exit /b 1
+)
+
+set "OUTPUT_DIR=%SELECTED_OUT%\output_%FOLDER_NAME%"
 
 echo.
 echo SELECTED INPUT:  %INPUT_DIR%
@@ -138,7 +153,7 @@ echo        - Output: _SPHARM_procalign.vtk for consistent vertex correspondence
 if not exist "%OUTPUT_DIR%\spharm_results" (
     echo.
     echo [ERROR] Step 2 failed - 'spharm_results' folder not created.
-    echo         Check spharm_progress.log for details.
+    echo         Check SPHARM\spharm_debug_log.txt for details.
     pause
     exit /b 1
 )
@@ -157,7 +172,7 @@ if !VTK_COUNT! LSS 2 (
     echo.
     echo [ERROR] Step 3 pre-check failed: only !VTK_COUNT! SPHARM .vtk file in spharm_results/
     echo         [need at least 2 — SPHARM step seems to have failed for most subjects]
-    echo         Check %OUTPUT_DIR%\spharm_results\spharm_progress.log
+    echo         Check %PIPELINE_DIR%\SPHARM\spharm_debug_log.txt
     pause
     exit /b 1
 )
@@ -189,38 +204,13 @@ if not "!REALIGN_EXIT!"=="0" (
 echo [OK] realign complete.
 echo.
 
-title Pipeline [4/5]: PLS-DA Analysis (%FOLDER_NAME%)
-echo [4/5] Running PLS-DA Analysis (visualize_plsda.py)...
-"%USER_PYTHON%" "%PIPELINE_DIR%\Visualize\Data_Plots\visualize_plsda.py" --output_dir "%OUTPUT_DIR%"
-if not exist "%OUTPUT_DIR%\plsda_results\plsda_scores.csv" (
-    echo.
-    echo [ERROR] Step 4 failed - plsda_scores.csv not created.
-    pause
-    exit /b 1
-)
-timeout /t 2 /nobreak >nul
-echo [OK] plsda_scores.csv created.
-echo.
-
-title Pipeline [5/5]: PLS-DA Visualization (%FOLDER_NAME%)
-echo [5/5] Generating PLS-DA Visualization Plot...
-if not exist "%OUTPUT_DIR%\plsda_results\plsda_visualization.png" (
-    echo.
-    echo [ERROR] Step 5 failed - plsda_visualization.png not created.
-    pause
-    exit /b 1
-)
-echo [OK] PLS-DA visualization complete.
-echo.
-
 title Pipeline Display: Plots (%FOLDER_NAME%)
-echo Displaying ICP Convergence Plot and PLS-DA Scatter Plot...
+echo Displaying ICP Convergence Plot...
 start "" "%USER_PYTHON%" "%PIPELINE_DIR%\ICP\plot_icp_convergence.py" --output_dir "%OUTPUT_DIR%" --show
-start "" "%USER_PYTHON%" "%PIPELINE_DIR%\Visualize\Data_Plots\visualize_plsda.py" --output_dir "%OUTPUT_DIR%" --show
 echo.
 
 echo ============================================================
-echo   SUCCESS: PIPELINE COMPLETED FOR DATASET: %FOLDER_NAME%
+echo   SUCCESS: SPHARM PIPELINE COMPLETED FOR DATASET: %FOLDER_NAME%
 echo   RESULTS ARE IN: %OUTPUT_DIR%
 echo ============================================================
 echo.
