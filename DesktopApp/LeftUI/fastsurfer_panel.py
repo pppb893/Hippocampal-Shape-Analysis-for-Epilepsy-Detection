@@ -1,28 +1,73 @@
 import os
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QCheckBox, QGroupBox, QFormLayout)
-from PyQt6.QtCore import pyqtSignal
+import glob
+import subprocess
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QCheckBox, QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabBar, QLineEdit, QFileDialog)
+from PyQt6.QtCore import pyqtSignal, Qt, QThread
+
+class FastSurferWorker(QThread):
+    signal_log = pyqtSignal(str)
+    signal_finished = pyqtSignal(bool)
+
+    def __init__(self, input_dir, output_dir=None):
+        super().__init__()
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+
+    def run(self):
+        self.signal_log.emit(f"Running run_pipeline.py with input_dir={self.input_dir}")
+        pipeline_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "run_pipeline.py")
+        pipeline_script = os.path.abspath(pipeline_script)
+        
+        try:
+            cmd = ["python", pipeline_script, "--input_dir", self.input_dir]
+            if self.output_dir:
+                cmd.extend(["--output_dir", self.output_dir])
+            
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            for line in process.stdout:
+                self.signal_log.emit(line.strip())
+            process.wait()
+            self.signal_finished.emit(process.returncode == 0)
+        except Exception as e:
+            self.signal_log.emit(f"[ERROR] Failed to run pipeline: {str(e)}")
+            self.signal_finished.emit(False)
+
 
 class FastsurferPanel(QWidget):
     signal_log_message = pyqtSignal(str)
+    signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
     
-    def __init__(self, get_folder_func, parent=None):
+    def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
         self.get_folder = get_folder_func
+        self.get_output_folder = get_output_folder_func
+        self.all_files = []
+        self.current_side_filter = "all"
         self.setup_ui()
         
     def setup_ui(self):
         fs_layout = QVBoxLayout(self)
+        fs_layout.setContentsMargins(10, 10, 10, 10)
+        fs_layout.setSpacing(10)
         
-        help_label = QLabel("This module runs FastSurfer to segment the brain (including the hippocampus) from T1w MRI scans.")
+        help_label = QLabel("Run FastSurfer segmentation or load existing Hippocampus mesh results.")
         help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: #555; font-size: 11px;")
         fs_layout.addWidget(help_label)
         
-        fs_group = QGroupBox("FastSurfer Parameters")
-        fs_group.setStyleSheet("""
+        # 1. Directory Selector Group (For loading existing results without re-running)
+        dir_group = QGroupBox("FastSurfer Output / Results Directory")
+        dir_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
-                margin-top: 20px;
+                margin-top: 15px;
                 background-color: #f8f9fa;
             }
             QGroupBox::title {
@@ -31,61 +76,363 @@ class FastsurferPanel(QWidget):
                 padding: 0 8px;
                 color: #2c3e50;
                 font-weight: bold;
-                font-size: 13px;
-            }
-            QLabel {
-                color: #2c3e50;
-                font-weight: 500;
+                font-size: 12px;
             }
         """)
+        dir_layout = QVBoxLayout(dir_group)
+        dir_layout.setContentsMargins(10, 20, 10, 10)
+        dir_layout.setSpacing(8)
         
+        dir_row = QHBoxLayout()
+        self.fs_dir_input = QLineEdit()
+        self.fs_dir_input.setPlaceholderText("No output directory selected...")
+        dir_row.addWidget(self.fs_dir_input)
+        
+        browse_dir_btn = QPushButton("📁 Browse")
+        browse_dir_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4b6584, stop:1 #34495e);
+                color: white;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 6px 12px;
+                border: 1px solid #2c3e50;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5f7a99, stop:1 #415b76);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c3e50, stop:1 #1a252f);
+            }
+        """)
+        browse_dir_btn.clicked.connect(self.browse_results_directory)
+        dir_row.addWidget(browse_dir_btn)
+        
+        load_btn = QPushButton("🔄 Reload")
+        load_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
+                color: white;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 6px 12px;
+                border: 1px solid #1e7e34;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4cd97b, stop:1 #2ecc71);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e7e34, stop:1 #145a24);
+            }
+        """)
+        load_btn.clicked.connect(self.populate_results_table)
+        dir_row.addWidget(load_btn)
+        
+        dir_layout.addLayout(dir_row)
+        fs_layout.addWidget(dir_group)
+        
+        # 2. FastSurfer Execution Parameters
+        fs_group = QGroupBox("FastSurfer Execution Parameters")
+        fs_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                margin-top: 10px;
+                background-color: #f8f9fa;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
+            }
+        """)
         fs_form = QFormLayout(fs_group)
-        fs_form.setContentsMargins(15, 25, 15, 15)
-        fs_form.setVerticalSpacing(12)
+        fs_form.setContentsMargins(10, 20, 10, 10)
+        fs_form.setSpacing(6)
         
         self.fs_gpu_cb = QCheckBox("Use GPU Acceleration (if available)")
         self.fs_gpu_cb.setChecked(True)
-        
-        self.fs_seg_only_cb = QCheckBox("Run Segmentation Only (Skip surface generation)")
-        self.fs_seg_only_cb.setChecked(False)
+        self.fs_seg_only_cb = QCheckBox("Run Segmentation Only")
+        self.fs_seg_only_cb.setChecked(True)
         
         fs_form.addRow("Compute Device:", self.fs_gpu_cb)
         fs_form.addRow("Pipeline Mode:", self.fs_seg_only_cb)
-        
         fs_layout.addWidget(fs_group)
         
-        self.run_fs_btn = QPushButton("Run FastSurfer")
+        self.run_fs_btn = QPushButton("▶ Run FastSurfer Pipeline")
         self.run_fs_btn.setStyleSheet("""
             QPushButton {
-                background-color: #3498db; 
-                color: white; 
-                padding: 10px 15px; 
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3498db, stop:1 #2980b9);
+                color: white;
                 font-weight: bold;
-                font-size: 14px;
-                border-radius: 6px;
-                border: none;
+                font-size: 12px;
+                padding: 9px 15px;
+                border: 1px solid #1f618d;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
             }
             QPushButton:pressed {
-                background-color: #1f618d;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f618d, stop:1 #154360);
+            }
+            QPushButton:disabled {
+                background: #bdc3c7;
+                color: #7f8c8d;
+                border: 1px solid #95a5a6;
             }
         """)
         self.run_fs_btn.clicked.connect(self.run_fastsurfer_process)
         fs_layout.addWidget(self.run_fs_btn)
         
-        fs_layout.addStretch()
+        # 3. Segmentation Results Table with Category Tabs (All / Left / Right)
+        res_group = QGroupBox("Segmentation Results & Meshes")
+        res_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                margin-top: 10px;
+                background-color: #ffffff;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
+            }
+        """)
+        res_layout = QVBoxLayout(res_group)
+        res_layout.setContentsMargins(10, 20, 10, 10)
+        res_layout.setSpacing(6)
+        
+        # Category Tabs (All / Left / Right)
+        self.tab_bar = QTabBar()
+        self.tab_bar.addTab("All")
+        self.tab_bar.addTab("Left (LH)")
+        self.tab_bar.addTab("Right (RH)")
+        self.tab_bar.setExpanding(True)
+        self.tab_bar.setStyleSheet("""
+            QTabBar::tab {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
+                color: #2c3e50;
+                padding: 6px 14px;
+                margin-right: 3px;
+                font-weight: bold;
+                font-size: 11px;
+                border: 1px solid #ced6e0;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
+                color: white;
+                border: 1px solid #1f618d;
+                border-bottom: none;
+            }
+            QTabBar::tab:hover:!selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f1f2f6);
+            }
+        """)
+        self.tab_bar.currentChanged.connect(self.on_tab_changed)
+        res_layout.addWidget(self.tab_bar)
+        
+        # Results Table with 3 Columns
+        self.results_table = QTableWidget(0, 3)
+        self.results_table.setHorizontalHeaderLabels(["File Name", "Side", "File Path"])
+        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.results_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.results_table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #dcdde1;
+                gridline-color: #ecf0f1;
+                font-size: 11px;
+            }
+            QTableWidget::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QHeaderView::section {
+                background-color: #f1f2f6;
+                padding: 4px;
+                font-weight: bold;
+                border: 1px solid #dcdde1;
+                font-size: 11px;
+            }
+        """)
+        self.results_table.itemSelectionChanged.connect(self.on_mesh_selected)
+        res_layout.addWidget(self.results_table)
+        
+        fs_layout.addWidget(res_group)
+
+    def browse_results_directory(self):
+        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        folder = QFileDialog.getExistingDirectory(self, "Select FastSurfer Results Directory", initial_dir)
+        if folder:
+            self.fs_dir_input.setText(folder)
+            self.signal_log_message.emit(f"Selected FastSurfer results directory: {folder}")
+            self.populate_results_table()
 
     def run_fastsurfer_process(self):
         input_dir = self.get_folder()
         if not input_dir or not os.path.isdir(input_dir):
-            self.signal_log_message.emit("[ERROR] Please select a valid input directory first.")
+            self.signal_log_message.emit("[ERROR] Please select a valid input directory first in Data Importer.")
             return
             
-        self.signal_log_message.emit(">>> Starting FastSurfer Segmentation...")
-        self.signal_log_message.emit(f"Input Directory: {input_dir}")
-        self.signal_log_message.emit(f"Use GPU: {self.fs_gpu_cb.isChecked()}")
-        self.signal_log_message.emit(f"Segmentation Only: {self.fs_seg_only_cb.isChecked()}")
-        self.signal_log_message.emit("[INFO] FastSurfer pipeline execution is a placeholder.")
-        self.signal_log_message.emit(">>> FastSurfer Segmentation finished.")
+        self.run_fs_btn.setEnabled(False)
+        self.results_table.setRowCount(0)
+        self.signal_log_message.emit(">>> Starting FastSurfer Pipeline...")
+        
+        out_dir = self.get_output_folder() if self.get_output_folder else None
+        
+        self.worker = FastSurferWorker(input_dir, out_dir)
+        self.worker.signal_log.connect(self.signal_log_message.emit)
+        self.worker.signal_finished.connect(self.on_fastsurfer_finished)
+        self.worker.start()
+
+    def on_fastsurfer_finished(self, success):
+        self.run_fs_btn.setEnabled(True)
+        if success:
+            self.signal_log_message.emit(">>> FastSurfer Pipeline completed successfully.")
+        else:
+            self.signal_log_message.emit("[ERROR] FastSurfer Pipeline failed or finished with errors.")
+        
+        # Sync input path with output folder
+        if self.get_output_folder and self.get_output_folder():
+            default_dir = os.path.join(os.path.abspath(self.get_output_folder()), "fastsurfer")
+            self.fs_dir_input.setText(default_dir)
+        
+        self.populate_results_table()
+
+    def on_tab_changed(self, index):
+        if index == 1:
+            self.current_side_filter = "lh"
+        elif index == 2:
+            self.current_side_filter = "rh"
+        else:
+            self.current_side_filter = "all"
+        self.update_table_display()
+
+    def populate_results_table(self):
+        target_dir = self.fs_dir_input.text().strip()
+        if not target_dir and self.get_output_folder and self.get_output_folder():
+            out_f = self.get_output_folder().strip()
+            if out_f and os.path.isdir(out_f):
+                target_dir = os.path.join(os.path.abspath(out_f), "fastsurfer")
+                self.fs_dir_input.setText(target_dir)
+            
+        self.all_files = []
+        if os.path.isdir(target_dir):
+            search_dirs = [target_dir]
+            # Check for subdirectories
+            for sub in ["left_hippocampus", "right_hippocampus", "fastsurfer_temp"]:
+                p = os.path.join(target_dir, sub)
+                if os.path.isdir(p):
+                    search_dirs.append(p)
+            # Also check if target_dir has a 'fastsurfer' child
+            fs_child = os.path.join(target_dir, "fastsurfer")
+            if os.path.isdir(fs_child):
+                search_dirs.append(fs_child)
+                search_dirs.append(os.path.join(fs_child, "left_hippocampus"))
+                search_dirs.append(os.path.join(fs_child, "right_hippocampus"))
+                
+            found = []
+            for d in search_dirs:
+                if os.path.isdir(d):
+                    found.extend(glob.glob(os.path.join(d, "*.nii.gz")))
+                    found.extend(glob.glob(os.path.join(d, "*_hippocampus", "*.nii.gz")))
+                    
+            seen = set()
+            for filepath in found:
+                norm_p = os.path.normpath(filepath)
+                if norm_p not in seen and os.path.isfile(norm_p):
+                    basename = os.path.basename(norm_p)
+                    # Filter only hippocampus masks
+                    if "hippocampus" in basename.lower() or basename.startswith("lh_") or basename.startswith("rh_"):
+                        seen.add(norm_p)
+                        
+                        # Determine side
+                        side_key = "unknown"
+                        side_label = "Hippocampus"
+                        if basename.startswith("lh_") or basename.endswith("_lh.nii.gz") or "left_hippocampus" in norm_p:
+                            side_key = "lh"
+                            side_label = "Left (LH)"
+                        elif basename.startswith("rh_") or basename.endswith("_rh.nii.gz") or "right_hippocampus" in norm_p:
+                            side_key = "rh"
+                            side_label = "Right (RH)"
+                            
+                        self.all_files.append({
+                            "filename": basename,
+                            "side": side_label,
+                            "side_key": side_key,
+                            "filepath": norm_p
+                        })
+                        
+        # Update tab texts with counts
+        all_count = len(self.all_files)
+        lh_count = sum(1 for f in self.all_files if f["side_key"] == "lh")
+        rh_count = sum(1 for f in self.all_files if f["side_key"] == "rh")
+        
+        self.tab_bar.setTabText(0, f"All ({all_count})")
+        self.tab_bar.setTabText(1, f"Left ({lh_count})")
+        self.tab_bar.setTabText(2, f"Right ({rh_count})")
+        
+        self.update_table_display()
+
+    def update_table_display(self):
+        if self.current_side_filter == "lh":
+            display_files = [f for f in self.all_files if f["side_key"] == "lh"]
+        elif self.current_side_filter == "rh":
+            display_files = [f for f in self.all_files if f["side_key"] == "rh"]
+        else:
+            display_files = self.all_files
+            
+        self.results_table.blockSignals(True)
+        self.results_table.setRowCount(len(display_files))
+        for i, item_info in enumerate(display_files):
+            # Col 0: File name
+            name_item = QTableWidgetItem(item_info["filename"])
+            name_item.setData(Qt.ItemDataRole.UserRole, item_info["filepath"])
+            self.results_table.setItem(i, 0, name_item)
+            
+            # Col 1: Side
+            side_item = QTableWidgetItem(item_info["side"])
+            side_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if item_info["side_key"] == "lh":
+                side_item.setForeground(Qt.GlobalColor.blue)
+            elif item_info["side_key"] == "rh":
+                side_item.setForeground(Qt.GlobalColor.darkYellow)
+            self.results_table.setItem(i, 1, side_item)
+            
+            # Col 2: Path
+            path_item = QTableWidgetItem(item_info["filepath"])
+            path_item.setToolTip(item_info["filepath"])
+            self.results_table.setItem(i, 2, path_item)
+            
+        self.results_table.blockSignals(False)
+        
+        if len(display_files) > 0:
+            self.results_table.selectRow(0)
+            self.on_mesh_selected()
+
+    def on_mesh_selected(self):
+        selected_items = self.results_table.selectedItems()
+        if selected_items:
+            # First item in row holds the UserRole filepath
+            row = selected_items[0].row()
+            name_item = self.results_table.item(row, 0)
+            if name_item:
+                filepath = name_item.data(Qt.ItemDataRole.UserRole)
+                if filepath:
+                    self.signal_mesh_selected.emit(filepath, self.current_side_filter)
+

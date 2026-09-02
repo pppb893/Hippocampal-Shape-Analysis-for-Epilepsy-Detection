@@ -18,28 +18,126 @@ class ImportPanel(QWidget):
         
         # 1. Import Data Properties
         import_group = QGroupBox("Import Data Properties")
-        import_group.setStyleSheet("QGroupBox { margin-top: 15px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 3px; }")
+        import_group.setStyleSheet("""
+            QGroupBox {
+                margin-top: 15px;
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                background-color: #f8f9fa;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
+            }
+        """)
         ig_layout = QVBoxLayout(import_group)
         ig_layout.setContentsMargins(10, 20, 10, 10)
-        ig_layout.setSpacing(10)
+        ig_layout.setSpacing(8)
 
+        # Row 1: Choose Data Directory and Choose Output Directory side by side
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
 
-        dir_select_btn = QPushButton("📁 Choose Data Directory")
-        dir_select_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; padding: 5px;")
+        dir_select_btn = QPushButton("Choose Data Directory")
+        dir_select_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
+                color: white;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 7px 10px;
+                border: 1px solid #1f618d;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64b5f6, stop:1 #3498db);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f618d, stop:1 #1a5276);
+            }
+        """)
         dir_select_btn.clicked.connect(self.select_directory)
-        ig_layout.addWidget(dir_select_btn)
+        btn_row.addWidget(dir_select_btn)
 
-        folder_layout = QHBoxLayout()
-        folder_layout.addWidget(QLabel("Folder:"))
+        out_dir_btn = QPushButton("Choose Output Directory")
+        out_dir_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f39c12, stop:1 #d35400);
+                color: white;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 7px 10px;
+                border: 1px solid #b94a00;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f5b041, stop:1 #e67e22);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #b94a00, stop:1 #933c00);
+            }
+        """)
+        out_dir_btn.clicked.connect(self.select_out_directory)
+        btn_row.addWidget(out_dir_btn)
+
+        ig_layout.addLayout(btn_row)
+
+        # Row 2: Input Path and Output Path side by side
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+
+        input_col = QVBoxLayout()
+        input_col.setSpacing(2)
+        input_lbl = QLabel("Input:")
+        input_lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #444;")
         self.folder_input = QLineEdit()
         self.folder_input.setReadOnly(True)
-        folder_layout.addWidget(self.folder_input)
-        ig_layout.addLayout(folder_layout)
-        
-        import_action_btn = QPushButton("Import")
-        import_action_btn.setStyleSheet("background-color: #2980b9; color: white; padding: 5px;")
+        self.folder_input.setPlaceholderText("No input directory selected...")
+        self.folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        input_col.addWidget(input_lbl)
+        input_col.addWidget(self.folder_input)
+        path_row.addLayout(input_col)
+
+        output_col = QVBoxLayout()
+        output_col.setSpacing(2)
+        output_lbl = QLabel("Output:")
+        output_lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #444;")
+        self.out_folder_input = QLineEdit()
+        self.out_folder_input.setReadOnly(True)
+        self.out_folder_input.setPlaceholderText("No output directory selected...")
+        self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        output_col.addWidget(output_lbl)
+        output_col.addWidget(self.out_folder_input)
+        path_row.addLayout(output_col)
+
+        ig_layout.addLayout(path_row)
+
+        # Row 3: Standalone Import Data Button
+        import_action_btn = QPushButton("Import Data")
+        import_action_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #219653);
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 8px 10px;
+                border: 1px solid #1e7e34;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4cd97b, stop:1 #27ae60);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e7e34, stop:1 #145a24);
+            }
+        """)
         import_action_btn.clicked.connect(self.on_import_clicked)
         ig_layout.addWidget(import_action_btn)
+        
         import_layout.addWidget(import_group)
 
         # 2. Imported Subjects
@@ -59,7 +157,22 @@ class ImportPanel(QWidget):
         display_layout = QHBoxLayout()
         
         self.remove_selected_btn = QPushButton("Remove Selected")
-        self.remove_selected_btn.setStyleSheet("background-color: #e74c3c; color: white;")
+        self.remove_selected_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff7961, stop:1 #e74c3c);
+                color: white;
+                font-weight: bold;
+                padding: 5px 10px;
+                border: 1px solid #c0392b;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff8a80, stop:1 #ff5252);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #c0392b, stop:1 #96281b);
+            }
+        """)
         self.remove_selected_btn.clicked.connect(self.remove_selected_subject)
         
         self.display_on_click_cb = QCheckBox("Display on click")
@@ -74,11 +187,22 @@ class ImportPanel(QWidget):
     def get_folder(self):
         return self.folder_input.text()
 
+    def get_output_folder(self):
+        return self.out_folder_input.text()
+
     def select_directory(self):
-        directory = QFileDialog.getExistingDirectory(self, "Select Data Directory")
-        if directory:
-            self.folder_input.setText(directory)
-            self.signal_log_message.emit(f"Selected directory: {directory}")
+        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        folder = QFileDialog.getExistingDirectory(self, "Select Directory with NIFTI files", initial_dir)
+        if folder:
+            self.folder_input.setText(folder)
+            self.signal_log_message.emit(f"Selected input directory: {folder}")
+
+    def select_out_directory(self):
+        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Directory", initial_dir)
+        if folder:
+            self.out_folder_input.setText(folder)
+            self.signal_log_message.emit(f"Selected output directory: {folder}")
 
     def on_import_clicked(self):
         directory = self.folder_input.text()

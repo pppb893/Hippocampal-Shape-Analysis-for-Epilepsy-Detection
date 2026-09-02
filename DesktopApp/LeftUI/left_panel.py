@@ -37,7 +37,7 @@ class LeftPanel(QWidget):
 
         # Create panels
         self.import_panel = ImportPanel()
-        self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder)
+        self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.icp_panel = IcpPanel(self.import_panel.get_folder)
         self.spharm_panel = SpharmPanel(self.import_panel.get_folder)
         self.plsda_panel = PlsdaPanel(self.import_panel.get_folder)

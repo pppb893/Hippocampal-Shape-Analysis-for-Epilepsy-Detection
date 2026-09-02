@@ -50,9 +50,10 @@ class MainWindow(QMainWindow):
 
         # Connect signals between panels
         self.left_panel.signal_subject_selected.connect(self.right_panel.display_subject)
+        self.left_panel.fastsurfer_panel.signal_mesh_selected.connect(self.right_panel.display_mesh)
         self.left_panel.signal_log_message.connect(self.log)
         self.right_panel.signal_log_message.connect(self.log)
-        self.module_combo.currentIndexChanged.connect(self.left_panel.switch_module)
+        self.module_combo.currentTextChanged.connect(self.on_module_changed)
 
         self.log("SlicerSALT-style UI initialized successfully.")
         
@@ -114,3 +115,12 @@ class MainWindow(QMainWindow):
 
     def log(self, message):
         self.log_window.append(message)
+
+    def on_module_changed(self, module_name):
+        index = self.module_combo.findText(module_name)
+        self.left_panel.switch_module(index)
+        
+        if module_name == "FastSurfer Segmentation":
+            self.right_panel.viewer.set_mesh_view_visible(True)
+        else:
+            self.right_panel.viewer.set_mesh_view_visible(False)
