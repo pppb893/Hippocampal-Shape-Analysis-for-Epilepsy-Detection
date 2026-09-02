@@ -5,8 +5,12 @@ from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter, QPen
 from PyQt6.QtCore import Qt, QLocale
 
 from ui_main_window import MainWindow
+import vtk
 
 if __name__ == "__main__":
+    # Suppress annoying VTK OpenGL context warnings on Windows (wglMakeCurrent error 6)
+    vtk.vtkObject.GlobalWarningDisplayOff()
+    
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
