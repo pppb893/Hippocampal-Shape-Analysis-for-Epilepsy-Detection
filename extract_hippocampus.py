@@ -317,7 +317,7 @@ def main():
                 print(f"  Cropped: {mask.shape} → {save_data.shape}")
 
         # Save binary mask
-        mask_filename = f"{prefix}hippocampus_{side}.nii.gz"
+        mask_filename = f"{side}_{prefix}hippocampus.nii.gz"
         mask_path = os.path.join(args.output_dir, mask_filename)
         save_nifti(save_data, img, mask_path, crop_origin)
 
@@ -335,7 +335,7 @@ def main():
                 slices = tuple(slice(mn, mx) for mn, mx in zip(mins, maxs))
                 intensity_data = intensity_data[slices]
 
-            int_filename = f"{prefix}hippocampus_{side}_intensity.nii.gz"
+            int_filename = f"{side}_{prefix}hippocampus_intensity.nii.gz"
             int_path = os.path.join(args.output_dir, int_filename)
             int_img = nib.Nifti1Image(intensity_data, img.affine, img.header)
             nib.save(int_img, int_path)

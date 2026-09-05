@@ -201,12 +201,18 @@ def run_fastsurfer(input_file, subject_id):
     ]
 
     print(f"  [RUN] FastSurfer segmentation...")
+    
+    # FastSurfer requires its root directory in PYTHONPATH to import FastSurferCNN
+    env = os.environ.copy()
+    env["PYTHONPATH"] = FASTSURFER_DIR + (os.pathsep + env["PYTHONPATH"] if "PYTHONPATH" in env else "")
+
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=1800,  # 30 min timeout
+            env=env
         )
         if result.returncode != 0:
             print(f"  [ERROR] FastSurfer failed:")
@@ -247,28 +253,31 @@ def run_extraction(seg_file, subject_id, temp_dir):
         return False
 
     # Check output files
-    lh = os.path.join(temp_dir, f"{subject_id}_hippocampus_lh.nii.gz")
-    rh = os.path.join(temp_dir, f"{subject_id}_hippocampus_rh.nii.gz")
+    lh = os.path.join(temp_dir, f"lh_{subject_id}_hippocampus.nii.gz")
+    rh = os.path.join(temp_dir, f"rh_{subject_id}_hippocampus.nii.gz")
 
     if os.path.isfile(lh) and os.path.isfile(rh):
         print(f"  [OK] Extraction complete (LH + RH)")
         return True
     else:
-        print(f"  [ERROR] Output files missing")
+        print(f"  [ERROR] Output files missing in {temp_dir}")
         return False
 
 
-def organize_output(temp_dir, subject_id):
+def organize_output(temp_dir, subject_id, orig_mgz=None):
     lh_dir = os.path.join(OUTPUT_DIR, "left_hippocampus")
     rh_dir = os.path.join(OUTPUT_DIR, "right_hippocampus")
+    mri_dir = os.path.join(OUTPUT_DIR, "mri")
     os.makedirs(lh_dir, exist_ok=True)
     os.makedirs(rh_dir, exist_ok=True)
+    os.makedirs(mri_dir, exist_ok=True)
 
-    lh_src = os.path.join(temp_dir, f"{subject_id}_hippocampus_lh.nii.gz")
-    rh_src = os.path.join(temp_dir, f"{subject_id}_hippocampus_rh.nii.gz")
+    lh_src = os.path.join(temp_dir, f"lh_{subject_id}_hippocampus.nii.gz")
+    rh_src = os.path.join(temp_dir, f"rh_{subject_id}_hippocampus.nii.gz")
 
-    lh_dst = os.path.join(lh_dir, f"{subject_id}_hippocampus_lh.nii.gz")
-    rh_dst = os.path.join(rh_dir, f"{subject_id}_hippocampus_rh.nii.gz")
+    lh_dst = os.path.join(lh_dir, f"lh_{subject_id}_hippocampus.nii.gz")
+    rh_dst = os.path.join(rh_dir, f"rh_{subject_id}_hippocampus.nii.gz")
+    mri_dst = os.path.join(mri_dir, f"{subject_id}_t1.nii.gz")
 
     moved = 0
     if os.path.isfile(lh_src):
@@ -277,6 +286,17 @@ def organize_output(temp_dir, subject_id):
     if os.path.isfile(rh_src):
         shutil.copy2(rh_src, rh_dst)
         moved += 1
+
+    # Save matching conformed MRI as NIfTI so it is paired with the masks
+    if orig_mgz and os.path.isfile(orig_mgz):
+        try:
+            import nibabel as nib
+            img = nib.load(orig_mgz)
+            nii_img = nib.Nifti1Image(np.asarray(img.dataobj), img.affine, img.header)
+            nib.save(nii_img, mri_dst)
+            print(f"  [SAVED] Paired MRI saved to {mri_dst}")
+        except Exception as e:
+            print(f"  [WARNING] Could not save paired MRI: {e}")
 
     return moved == 2
 
@@ -289,9 +309,20 @@ def main():
                         help="MRI file(s) (.nii.gz), one or more")
     parser.add_argument("--input_dir", "-d",
                         help="Folder containing MRI files (batch mode)")
+    parser.add_argument("--output_dir", "-o",
+                        help="Custom output folder path")
     parser.add_argument("--skip_fastsurfer", action="store_true",
                         help="Skip FastSurfer, use existing segmentation (input = mgz files)")
     args = parser.parse_args()
+
+    # Configure output dirs before printing banner
+    global OUTPUT_DIR, FASTSURFER_OUTPUT_DIR
+    if args.output_dir:
+        OUTPUT_DIR = os.path.join(os.path.abspath(args.output_dir), "fastsurfer")
+        FASTSURFER_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "fastsurfer_temp")
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(FASTSURFER_OUTPUT_DIR, exist_ok=True)
 
     print_banner()
     validate_setup()
@@ -324,9 +355,9 @@ def main():
         print(f"  ... and {len(input_files)-5} more")
 
     # === Steps 2-4: Process each subject ===
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(FASTSURFER_OUTPUT_DIR, exist_ok=True)
     temp_extract_dir = os.path.join(PIPELINE_DIR, "_temp_extract")
+
+    log_path = os.path.join(OUTPUT_DIR, "pipeline_log.txt")
     os.makedirs(temp_extract_dir, exist_ok=True)
 
     total = len(input_files)
@@ -354,10 +385,13 @@ def main():
         else:
             subject_id = get_subject_id(input_file)
 
-        # Check if already processed
-        lh_check = os.path.join(OUTPUT_DIR, "left_hippocampus", f"{subject_id}_hippocampus_lh.nii.gz")
-        rh_check = os.path.join(OUTPUT_DIR, "right_hippocampus", f"{subject_id}_hippocampus_rh.nii.gz")
-        if os.path.isfile(lh_check) and os.path.isfile(rh_check):
+        # Check if already processed (supports both new and old filename conventions)
+        lh_check_new = os.path.join(OUTPUT_DIR, "left_hippocampus", f"lh_{subject_id}_hippocampus.nii.gz")
+        rh_check_new = os.path.join(OUTPUT_DIR, "right_hippocampus", f"rh_{subject_id}_hippocampus.nii.gz")
+        lh_check_old = os.path.join(OUTPUT_DIR, "left_hippocampus", f"{subject_id}_hippocampus_lh.nii.gz")
+        rh_check_old = os.path.join(OUTPUT_DIR, "right_hippocampus", f"{subject_id}_hippocampus_rh.nii.gz")
+        
+        if (os.path.isfile(lh_check_new) and os.path.isfile(rh_check_new)) or (os.path.isfile(lh_check_old) and os.path.isfile(rh_check_old)):
             print(f"  [SKIP] Already processed: {subject_id}")
             skipped += 1
             log_lines.append(f"[{i+1}/{total}] {subject_id}: SKIPPED")
@@ -381,7 +415,10 @@ def main():
             continue
 
         # Step 4: Organize output
-        org_ok = organize_output(temp_extract_dir, subject_id)
+        orig_mgz = os.path.join(FASTSURFER_OUTPUT_DIR, subject_id, "mri", "orig.mgz")
+        if not os.path.isfile(orig_mgz):
+            orig_mgz = os.path.join(os.path.dirname(seg_file), "orig.mgz")
+        org_ok = organize_output(temp_extract_dir, subject_id, orig_mgz=orig_mgz)
         if org_ok:
             success += 1
             log_lines.append(f"[{i+1}/{total}] {subject_id}: SUCCESS")
