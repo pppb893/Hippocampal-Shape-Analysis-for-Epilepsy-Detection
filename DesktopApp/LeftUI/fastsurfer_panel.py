@@ -271,6 +271,7 @@ class FastsurferPanel(QWidget):
             }
         """)
         self.results_table.itemSelectionChanged.connect(self.on_mesh_selected)
+        self.results_table.cellClicked.connect(self.on_cell_clicked)
         res_layout.addWidget(self.results_table)
         
         fs_layout.addWidget(res_group)
@@ -420,10 +421,11 @@ class FastsurferPanel(QWidget):
             self.results_table.setItem(i, 2, path_item)
             
         self.results_table.blockSignals(False)
-        
-        if len(display_files) > 0:
-            self.results_table.selectRow(0)
-            self.on_mesh_selected()
+        self.results_table.clearSelection()
+
+    def on_cell_clicked(self, row, col):
+        self.results_table.selectRow(row)
+        self.on_mesh_selected()
 
     def on_mesh_selected(self):
         selected_items = self.results_table.selectedItems()

@@ -55,8 +55,8 @@ if __name__ == "__main__":
     # Initialize the heavy main window
     window = MainWindow()
     
-    # Close splash and show main window
+    # Close splash and show main window maximized
     splash.finish(window)
-    window.show()
+    window.showMaximized()
     
     sys.exit(app.exec())

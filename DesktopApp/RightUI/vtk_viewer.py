@@ -67,8 +67,8 @@ class VtkViewer(QWidget):
         self.grid_layout.addWidget(self.coronal_frame, 1, 0)
         self.grid_layout.addWidget(self.sagittal_frame, 1, 1)
 
-        # Set up VTK Viewers with Sliders and 3D Plane Toggles
-        self.axial_slider, self.axial_vtkWidget, self.axial_slice_lbl, self.axial_flip_btn, self.axial_3d_btn = self.setup_vtk_with_slider(self.axial_frame, "Axial View")
+        # Set up VTK Viewers with Sliders, Reset Buttons and 3D Plane Toggles
+        self.axial_slider, self.axial_vtkWidget, self.axial_slice_lbl, self.axial_flip_btn, self.axial_3d_btn, self.axial_reset_btn = self.setup_vtk_with_slider(self.axial_frame, "Axial View")
         self.axial_viewer = vtk.vtkImageViewer2()
         self.axial_viewer.SetRenderWindow(self.axial_vtkWidget.GetRenderWindow())
         self.axial_viewer.SetupInteractor(self.axial_vtkWidget.GetRenderWindow().GetInteractor())
@@ -76,8 +76,9 @@ class VtkViewer(QWidget):
         self.axial_slider.valueChanged.connect(lambda val: self.change_slice(self.axial_viewer, val, self.axial_slider, self.axial_slice_lbl))
         self.axial_flip_btn.clicked.connect(lambda: self.toggle_flip(self.axial_viewer))
         self.axial_3d_btn.toggled.connect(lambda chk: self.toggle_3d_plane("axial", chk))
+        self.axial_reset_btn.clicked.connect(lambda: self.reset_slice("axial"))
 
-        self.coronal_slider, self.coronal_vtkWidget, self.coronal_slice_lbl, self.coronal_flip_btn, self.coronal_3d_btn = self.setup_vtk_with_slider(self.coronal_frame, "Coronal View")
+        self.coronal_slider, self.coronal_vtkWidget, self.coronal_slice_lbl, self.coronal_flip_btn, self.coronal_3d_btn, self.coronal_reset_btn = self.setup_vtk_with_slider(self.coronal_frame, "Coronal View")
         self.coronal_viewer = vtk.vtkImageViewer2()
         self.coronal_viewer.SetRenderWindow(self.coronal_vtkWidget.GetRenderWindow())
         self.coronal_viewer.SetupInteractor(self.coronal_vtkWidget.GetRenderWindow().GetInteractor())
@@ -85,8 +86,9 @@ class VtkViewer(QWidget):
         self.coronal_slider.valueChanged.connect(lambda val: self.change_slice(self.coronal_viewer, val, self.coronal_slider, self.coronal_slice_lbl))
         self.coronal_flip_btn.clicked.connect(lambda: self.toggle_flip(self.coronal_viewer))
         self.coronal_3d_btn.toggled.connect(lambda chk: self.toggle_3d_plane("coronal", chk))
+        self.coronal_reset_btn.clicked.connect(lambda: self.reset_slice("coronal"))
 
-        self.sagittal_slider, self.sagittal_vtkWidget, self.sagittal_slice_lbl, self.sagittal_flip_btn, self.sagittal_3d_btn = self.setup_vtk_with_slider(self.sagittal_frame, "Sagittal View")
+        self.sagittal_slider, self.sagittal_vtkWidget, self.sagittal_slice_lbl, self.sagittal_flip_btn, self.sagittal_3d_btn, self.sagittal_reset_btn = self.setup_vtk_with_slider(self.sagittal_frame, "Sagittal View")
         self.sagittal_viewer = vtk.vtkImageViewer2()
         self.sagittal_viewer.SetRenderWindow(self.sagittal_vtkWidget.GetRenderWindow())
         self.sagittal_viewer.SetupInteractor(self.sagittal_vtkWidget.GetRenderWindow().GetInteractor())
@@ -94,6 +96,14 @@ class VtkViewer(QWidget):
         self.sagittal_slider.valueChanged.connect(lambda val: self.change_slice(self.sagittal_viewer, val, self.sagittal_slider, self.sagittal_slice_lbl))
         self.sagittal_flip_btn.clicked.connect(lambda: self.toggle_flip(self.sagittal_viewer))
         self.sagittal_3d_btn.toggled.connect(lambda chk: self.toggle_3d_plane("sagittal", chk))
+        self.sagittal_reset_btn.clicked.connect(lambda: self.reset_slice("sagittal"))
+
+        # Configure solid black background for 2D slice viewers (Axial, Coronal, Sagittal)
+        for viewer in [self.axial_viewer, self.coronal_viewer, self.sagittal_viewer]:
+            ren = viewer.GetRenderer()
+            ren.GradientBackgroundOff()
+            ren.SetBackground(0.0, 0.0, 0.0)
+            viewer.GetImageActor().SetVisibility(False)
 
         # Set up VTK Viewer for 3D Mesh
         layout_mesh = self.mesh_frame.layout()
@@ -115,10 +125,13 @@ class VtkViewer(QWidget):
         layout_mesh.addLayout(mesh_top_bar)
         
         self.mesh_vtkWidget = QVTKRenderWindowInteractor(self.mesh_frame)
+        self.mesh_vtkWidget.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
         layout_mesh.addWidget(self.mesh_vtkWidget)
         
         self.mesh_renderer = vtk.vtkRenderer()
-        self.mesh_renderer.SetBackground(0.12, 0.12, 0.12)
+        self.mesh_renderer.GradientBackgroundOn()
+        self.mesh_renderer.SetBackground(0.741, 0.749, 0.902)
+        self.mesh_renderer.SetBackground2(0.459, 0.475, 0.745)
         self.mesh_vtkWidget.GetRenderWindow().AddRenderer(self.mesh_renderer)
         
         # 3D Orthogonal Slice Plane Actors & Outline Borders
@@ -172,14 +185,17 @@ class VtkViewer(QWidget):
         self.mesh_frame.hide()
 
         self.axial_vtkWidget.Initialize()
+        self.axial_vtkWidget.GetRenderWindow().Render()
         self.coronal_vtkWidget.Initialize()
+        self.coronal_vtkWidget.GetRenderWindow().Render()
         self.sagittal_vtkWidget.Initialize()
+        self.sagittal_vtkWidget.GetRenderWindow().Render()
         self.mesh_vtkWidget.Initialize()
         self.mesh_vtkWidget.GetRenderWindow().Render()
 
     def create_view_frame(self, color):
         frame = QFrame()
-        frame.setStyleSheet(f"QFrame {{ border: 2px solid {color}; background-color: #1a1a1a; }}")
+        frame.setStyleSheet(f"QFrame {{ border: 2px solid {color}; background-color: #1e2230; }}")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -199,6 +215,7 @@ class VtkViewer(QWidget):
         plane_3d_btn = QPushButton("🔲 3D")
         plane_3d_btn.setCheckable(True)
         plane_3d_btn.setChecked(False)
+        plane_3d_btn.setVisible(False)  # Hidden initially until a mesh file is clicked in FastSurfer
         plane_3d_btn.setToolTip("Show / Hide slice plane in 3D Mesh View")
         plane_3d_btn.setFixedSize(45, 24)
         plane_3d_btn.setStyleSheet("""
@@ -238,9 +255,11 @@ class VtkViewer(QWidget):
         
         layout.addLayout(top_bar)
         
-        # Slider
+        # Slider and Reset Button Row
         slider_layout = QHBoxLayout()
         slider_layout.setContentsMargins(5, 0, 5, 5)
+        slider_layout.setSpacing(6)
+        
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setEnabled(False)
         slider.setStyleSheet("""
@@ -252,18 +271,62 @@ class VtkViewer(QWidget):
         
         slice_lbl = QLabel("Slice: - / -")
         slice_lbl.setStyleSheet("color: white; font-size: 11px; border: none; background: transparent;")
-        slice_lbl.setFixedWidth(80)
+        slice_lbl.setFixedWidth(75)
         slice_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        reset_slice_btn = QPushButton("↺ Reset")
+        reset_slice_btn.setToolTip("Reset to initial slice")
+        reset_slice_btn.setEnabled(False)
+        reset_slice_btn.setFixedSize(58, 22)
+        reset_slice_btn.setStyleSheet("""
+            QPushButton {
+                background: #34495e;
+                color: #ecf0f1;
+                border: 1px solid #7f8c8d;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #415b76;
+                color: white;
+            }
+            QPushButton:pressed {
+                background: #2c3e50;
+            }
+            QPushButton:disabled {
+                background: #242735;
+                color: #666;
+                border: 1px solid #3d414d;
+            }
+        """)
         
         slider_layout.addWidget(slider)
         slider_layout.addWidget(slice_lbl)
+        slider_layout.addWidget(reset_slice_btn)
         layout.addLayout(slider_layout)
         
         # We use our custom widget that ignores left clicks
         vtkWidget = CustomQVTKWidget(frame)
         layout.addWidget(vtkWidget)
         
-        return slider, vtkWidget, slice_lbl, flip_btn, plane_3d_btn
+        return slider, vtkWidget, slice_lbl, flip_btn, plane_3d_btn, reset_slice_btn
+
+    def set_3d_plane_buttons_visible(self, visible: bool):
+        self.axial_3d_btn.setVisible(visible)
+        self.coronal_3d_btn.setVisible(visible)
+        self.sagittal_3d_btn.setVisible(visible)
+
+    def reset_slice(self, orientation):
+        if orientation == "axial" and hasattr(self, 'axial_initial_slice'):
+            self.axial_slider.setValue(self.axial_initial_slice)
+            self.signal_log_message.emit(f"Axial view reset to initial slice {self.axial_initial_slice}.")
+        elif orientation == "coronal" and hasattr(self, 'coronal_initial_slice'):
+            self.coronal_slider.setValue(self.coronal_initial_slice)
+            self.signal_log_message.emit(f"Coronal view reset to initial slice {self.coronal_initial_slice}.")
+        elif orientation == "sagittal" and hasattr(self, 'sagittal_initial_slice'):
+            self.sagittal_slider.setValue(self.sagittal_initial_slice)
+            self.signal_log_message.emit(f"Sagittal view reset to initial slice {self.sagittal_initial_slice}.")
 
     def toggle_3d_plane(self, orientation, visible):
         if visible:
@@ -368,6 +431,7 @@ class VtkViewer(QWidget):
             return
             
         self.set_mesh_view_visible(True)
+        self.set_3d_plane_buttons_visible(True)
         
         # Clear existing mesh actor only (preserve 3D slice plane actors)
         if self.mesh_actor is not None:
@@ -509,21 +573,27 @@ class VtkViewer(QWidget):
             dims = image_data.GetDimensions()
             self.current_dims = dims
             
-            # Setup Sliders
+            # Setup Sliders and Reset Buttons
             self.axial_slider.setEnabled(True)
             self.axial_slider.setRange(0, dims[2] - 1)
-            self.axial_slider.setValue(dims[2] // 2)
-            self.axial_slice_lbl.setText(f"Slice: {dims[2] // 2} / {dims[2] - 1}")
+            self.axial_initial_slice = dims[2] // 2
+            self.axial_slider.setValue(self.axial_initial_slice)
+            self.axial_slice_lbl.setText(f"Slice: {self.axial_initial_slice} / {dims[2] - 1}")
+            self.axial_reset_btn.setEnabled(True)
             
             self.coronal_slider.setEnabled(True)
             self.coronal_slider.setRange(0, dims[1] - 1)
-            self.coronal_slider.setValue(dims[1] // 2)
-            self.coronal_slice_lbl.setText(f"Slice: {dims[1] // 2} / {dims[1] - 1}")
+            self.coronal_initial_slice = dims[1] // 2
+            self.coronal_slider.setValue(self.coronal_initial_slice)
+            self.coronal_slice_lbl.setText(f"Slice: {self.coronal_initial_slice} / {dims[1] - 1}")
+            self.coronal_reset_btn.setEnabled(True)
             
             self.sagittal_slider.setEnabled(True)
             self.sagittal_slider.setRange(0, dims[0] - 1)
-            self.sagittal_slider.setValue(dims[0] // 2)
-            self.sagittal_slice_lbl.setText(f"Slice: {dims[0] // 2} / {dims[0] - 1}")
+            self.sagittal_initial_slice = dims[0] // 2
+            self.sagittal_slider.setValue(self.sagittal_initial_slice)
+            self.sagittal_slice_lbl.setText(f"Slice: {self.sagittal_initial_slice} / {dims[0] - 1}")
+            self.sagittal_reset_btn.setEnabled(True)
             
             # Auto window/level based on scalar range
             scalar_range = image_data.GetScalarRange()
@@ -558,6 +628,7 @@ class VtkViewer(QWidget):
             
             # Update viewers
             for viewer in [self.axial_viewer, self.coronal_viewer, self.sagittal_viewer]:
+                viewer.GetImageActor().SetVisibility(True)
                 viewer.SetColorWindow(window)
                 viewer.SetColorLevel(level)
                 

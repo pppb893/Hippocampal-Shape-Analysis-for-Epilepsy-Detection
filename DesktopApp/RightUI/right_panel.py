@@ -28,6 +28,7 @@ class RightPanel(QWidget):
     def display_mesh(self, filepath, side_filter="all"):
         self.signal_log_message.emit(f"Displaying 3D Mesh: {os.path.basename(filepath)}")
         self.viewer.display_mesh(filepath)
+        self.viewer.set_3d_plane_buttons_visible(True)
         
         # Infer output directory and subject id from the mesh filepath
         # Filepath looks like: .../output_dir/left_hippocampus/lh_sub-XXXX_hippocampus.nii.gz

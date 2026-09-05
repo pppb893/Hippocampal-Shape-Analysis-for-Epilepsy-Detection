@@ -1,6 +1,8 @@
 import sys
 import webbrowser
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QLabel, QComboBox, QMessageBox, QTextEdit
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 
+                             QLabel, QComboBox, QMessageBox, QTextEdit, QPushButton, 
+                             QCheckBox, QApplication, QScrollArea, QFrame)
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 
@@ -21,32 +23,181 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        v_splitter = QSplitter(Qt.Orientation.Vertical)
-        main_layout.addWidget(v_splitter)
+        self.v_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.v_splitter.setHandleWidth(8)
+        self.v_splitter.setChildrenCollapsible(True)
+        self.v_splitter.setStyleSheet("""
+            QSplitter::handle:vertical {
+                background: #34495e;
+                height: 8px;
+                border-top: 1px solid #4a627a;
+                border-bottom: 1px solid #243342;
+            }
+            QSplitter::handle:vertical:hover {
+                background: #3498db;
+            }
+        """)
+        main_layout.addWidget(self.v_splitter)
 
-        h_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.h_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.h_splitter.setHandleWidth(6)
+        self.h_splitter.setStyleSheet("""
+            QSplitter::handle:horizontal {
+                background: #dcdde1;
+                width: 6px;
+            }
+            QSplitter::handle:horizontal:hover {
+                background: #3498db;
+            }
+        """)
 
         self.left_panel = LeftPanel(self)
         self.right_panel = RightPanel(self)
 
-        h_splitter.addWidget(self.left_panel)
-        h_splitter.addWidget(self.right_panel)
-        h_splitter.setSizes([350, 850])
+        # Wrap LeftPanel in a scroll area so it doesn't get clipped and allows free vertical resizing
+        self.left_scroll = QScrollArea()
+        self.left_scroll.setWidgetResizable(True)
+        self.left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.left_scroll.setWidget(self.left_panel)
+
+        # Wrap RightPanel in a scroll area so the 4 viewports maintain their dimensions and don't squish
+        self.right_scroll = QScrollArea()
+        self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.right_panel.setMinimumHeight(450)
+        self.right_panel.setMinimumWidth(500)
+        self.right_scroll.setWidget(self.right_panel)
+
+        self.h_splitter.addWidget(self.left_scroll)
+        self.h_splitter.addWidget(self.right_scroll)
+        self.h_splitter.setSizes([380, 820])
         
-        v_splitter.addWidget(h_splitter)
+        self.v_splitter.addWidget(self.h_splitter)
         
-        console_widget = QWidget()
-        console_layout = QVBoxLayout(console_widget)
-        console_layout.setContentsMargins(5, 0, 5, 5)
-        console_layout.addWidget(QLabel("Console Output:"))
+        # Enhanced Execution Console Widget
+        self.console_widget = QWidget()
+        console_layout = QVBoxLayout(self.console_widget)
+        console_layout.setContentsMargins(6, 6, 6, 6)
+        console_layout.setSpacing(6)
+        
+        # Console Header Toolbar
+        console_header = QHBoxLayout()
+        console_header.setContentsMargins(2, 0, 2, 0)
+        console_header.setSpacing(8)
+        
+        console_title = QLabel("🖥️ Terminal & Execution Console")
+        console_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #2c3e50;")
+        console_header.addWidget(console_title)
+        
+        self.console_status_lbl = QLabel("Ready")
+        self.console_status_lbl.setStyleSheet("color: #7f8c8d; font-size: 11px; padding-left: 4px;")
+        console_header.addWidget(self.console_status_lbl)
+        
+        console_header.addStretch()
+        
+        self.auto_scroll_cb = QCheckBox("Auto-scroll")
+        self.auto_scroll_cb.setChecked(True)
+        self.auto_scroll_cb.setStyleSheet("color: #34495e; font-size: 11px;")
+        console_header.addWidget(self.auto_scroll_cb)
+        
+        copy_btn = QPushButton("📋 Copy All")
+        copy_btn.setFixedHeight(24)
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background: #f1f2f6;
+                color: #2f3542;
+                border: 1px solid #ced6e0;
+                border-radius: 3px;
+                font-size: 11px;
+                padding: 2px 8px;
+            }
+            QPushButton:hover { background: #e4e7eb; }
+        """)
+        copy_btn.clicked.connect(self.copy_console_logs)
+        console_header.addWidget(copy_btn)
+        
+        clear_btn = QPushButton("🧹 Clear")
+        clear_btn.setFixedHeight(24)
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background: #f1f2f6;
+                color: #2f3542;
+                border: 1px solid #ced6e0;
+                border-radius: 3px;
+                font-size: 11px;
+                padding: 2px 8px;
+            }
+            QPushButton:hover { background: #e4e7eb; color: #e74c3c; }
+        """)
+        clear_btn.clicked.connect(self.clear_console_logs)
+        console_header.addWidget(clear_btn)
+        
+        self.expand_btn = QPushButton("⤢ Expand")
+        self.expand_btn.setFixedHeight(24)
+        self.expand_btn.setToolTip("Expand terminal to full screen covering workspace")
+        self.expand_btn.setStyleSheet("""
+            QPushButton {
+                background: #34495e;
+                color: white;
+                border: 1px solid #2c3e50;
+                border-radius: 3px;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 2px 10px;
+            }
+            QPushButton:hover { background: #415b76; }
+        """)
+        self.expand_btn.clicked.connect(self.toggle_console_expand)
+        console_header.addWidget(self.expand_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedHeight(24)
+        close_btn.setFixedWidth(24)
+        close_btn.setToolTip("Hide Terminal (Show again via View menu)")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #7f8c8d;
+                border: 1px solid #ced6e0;
+                border-radius: 3px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: #e74c3c; color: white; border-color: #c0392b; }
+        """)
+        close_btn.clicked.connect(lambda: self.set_terminal_visible(False))
+        console_header.addWidget(close_btn)
+        
+        console_layout.addLayout(console_header)
         
         self.log_window = QTextEdit()
         self.log_window.setReadOnly(True)
-        self.log_window.setStyleSheet("background-color: #1e1e1e; color: #00ff00; font-family: Consolas;")
+        self.log_window.setStyleSheet("""
+            QTextEdit {
+                background-color: #161b22;
+                color: #e6edf3;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.4;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                padding: 6px;
+            }
+        """)
         console_layout.addWidget(self.log_window)
         
-        v_splitter.addWidget(console_widget)
-        v_splitter.setSizes([600, 200])
+        self.v_splitter.addWidget(self.console_widget)
+        self.v_splitter.setStretchFactor(0, 1)
+        self.v_splitter.setStretchFactor(1, 0)
+        self.v_splitter.setSizes([600, 135])
+        self.v_splitter.splitterMoved.connect(self.on_splitter_moved)
+
+        self.is_terminal_fullscreen = False
+        self.saved_splitter_sizes = [600, 135]
 
         # Connect signals between panels
         self.left_panel.signal_subject_selected.connect(self.right_panel.display_subject)
@@ -58,6 +209,7 @@ class MainWindow(QMainWindow):
         self.log("SlicerSALT-style UI initialized successfully.")
         
         self.check_slicer_salt()
+        self.showMaximized()
 
     def create_menus_and_toolbar(self):
         menubar = self.menuBar()
@@ -82,7 +234,13 @@ class MainWindow(QMainWindow):
         toggle_toolbar_action = QAction("Toggle Toolbar", self, checkable=True)
         toggle_toolbar_action.setChecked(True)
         reset_view_action = QAction("Reset View", self)
+        
+        self.toggle_terminal_action = QAction("Terminal / Console", self, checkable=True)
+        self.toggle_terminal_action.setChecked(True)
+        self.toggle_terminal_action.triggered.connect(self.set_terminal_visible)
+
         view_menu.addAction(toggle_toolbar_action)
+        view_menu.addAction(self.toggle_terminal_action)
         view_menu.addSeparator()
         view_menu.addAction(reset_view_action)
 
@@ -113,8 +271,104 @@ class MainWindow(QMainWindow):
         else:
             self.log(f"SUCCESS: SlicerSALT detected at {slicer_paths[0]}")
 
+    def copy_console_logs(self):
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(self.log_window.toPlainText())
+            self.console_status_lbl.setText("Logs copied to clipboard!")
+            self.console_status_lbl.setStyleSheet("color: #2ecc71; font-size: 11px;")
+
+    def clear_console_logs(self):
+        self.log_window.clear()
+        self.console_status_lbl.setText("Console cleared")
+        self.console_status_lbl.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+
+    def toggle_console_expand(self):
+        sizes = self.v_splitter.sizes()
+        total_height = sum(sizes) if sum(sizes) > 0 else 800
+        
+        # If not full screen (top area > 50px) -> make terminal full screen covering left and right
+        if sizes[0] > 50:
+            self.saved_splitter_sizes = sizes
+            self.v_splitter.setSizes([0, total_height])
+            self.is_terminal_fullscreen = True
+            self.expand_btn.setText("⤡ Restore")
+            self.expand_btn.setToolTip("Restore terminal to original size")
+            self.console_status_lbl.setText("Terminal Fullscreen (Covering workspace)")
+        else:
+            # Restore to previous sizes
+            if hasattr(self, 'saved_splitter_sizes') and self.saved_splitter_sizes[0] > 50:
+                self.v_splitter.setSizes(self.saved_splitter_sizes)
+            else:
+                self.v_splitter.setSizes([total_height - 135, 135])
+            self.is_terminal_fullscreen = False
+            self.expand_btn.setText("⤢ Expand")
+            self.expand_btn.setToolTip("Expand terminal to full screen")
+            self.console_status_lbl.setText("Ready")
+
+    def on_splitter_moved(self, pos, index):
+        sizes = self.v_splitter.sizes()
+        if sizes[0] > 50 and getattr(self, 'is_terminal_fullscreen', False):
+            self.is_terminal_fullscreen = False
+            self.expand_btn.setText("⤢ Expand")
+            self.expand_btn.setToolTip("Expand terminal to full screen")
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, 'v_splitter') and not getattr(self, '_initial_layout_done', False):
+            self._initial_layout_done = True
+            total_h = self.v_splitter.height()
+            if total_h > 150:
+                terminal_h = 135
+                top_h = max(total_h - terminal_h, 540)
+                self.v_splitter.setSizes([top_h, total_h - top_h])
+                self.saved_splitter_sizes = [top_h, total_h - top_h]
+
+    def set_terminal_visible(self, visible):
+        self.console_widget.setVisible(visible)
+        if hasattr(self, 'toggle_terminal_action'):
+            self.toggle_terminal_action.setChecked(visible)
+        if visible:
+            sizes = self.v_splitter.sizes()
+            total_height = sum(sizes) if sum(sizes) > 0 else 800
+            if len(sizes) >= 2 and sizes[1] < 50:
+                self.v_splitter.setSizes([total_height - 135, 135])
+            self.console_status_lbl.setText("Ready")
+
     def log(self, message):
-        self.log_window.append(message)
+        import html
+        from datetime import datetime
+        
+        now_str = datetime.now().strftime("%H:%M:%S")
+        escaped_msg = html.escape(str(message))
+        
+        # Color coding tags for easier monitoring
+        if "[ERROR]" in escaped_msg:
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #ff7b72; font-weight: bold;">{escaped_msg}</span>'
+            self.console_status_lbl.setText("Last status: Error")
+            self.console_status_lbl.setStyleSheet("color: #ff7b72; font-weight: bold; font-size: 11px;")
+        elif "[WARNING]" in escaped_msg:
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #d29922; font-weight: bold;">{escaped_msg}</span>'
+            self.console_status_lbl.setText("Last status: Warning")
+            self.console_status_lbl.setStyleSheet("color: #d29922; font-size: 11px;")
+        elif ">>>" in escaped_msg or "Starting" in escaped_msg or "Running" in escaped_msg:
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #58a6ff; font-weight: bold;">{escaped_msg}</span>'
+            self.console_status_lbl.setText("Running...")
+            self.console_status_lbl.setStyleSheet("color: #58a6ff; font-size: 11px;")
+        elif "SUCCESS" in escaped_msg or "completed successfully" in escaped_msg.lower():
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #3fb950; font-weight: bold;">{escaped_msg}</span>'
+            self.console_status_lbl.setText("Ready (Success)")
+            self.console_status_lbl.setStyleSheet("color: #3fb950; font-weight: bold; font-size: 11px;")
+        elif "[INFO]" in escaped_msg:
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #79c0ff;">{escaped_msg}</span>'
+        else:
+            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #c9d1d9;">{escaped_msg}</span>'
+            
+        self.log_window.append(formatted)
+        
+        if hasattr(self, 'auto_scroll_cb') and self.auto_scroll_cb.isChecked():
+            sb = self.log_window.verticalScrollBar()
+            sb.setValue(sb.maximum())
 
     def on_module_changed(self, module_name):
         index = self.module_combo.findText(module_name)

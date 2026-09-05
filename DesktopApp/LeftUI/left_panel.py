@@ -8,6 +8,15 @@ from .spharm_panel import SpharmPanel
 from .plsda_panel import PlsdaPanel
 from .feature_panel import FeaturePanel
 
+class AdaptiveStackedWidget(QStackedWidget):
+    def sizeHint(self):
+        cw = self.currentWidget()
+        return cw.sizeHint() if cw else super().sizeHint()
+
+    def minimumSizeHint(self):
+        cw = self.currentWidget()
+        return cw.minimumSizeHint() if cw else super().minimumSizeHint()
+
 class LeftPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
@@ -18,21 +27,21 @@ class LeftPanel(QWidget):
 
     def setup_ui(self):
         left_layout = QVBoxLayout(self)
-        left_layout.setContentsMargins(15, 15, 15, 15)
-        left_layout.setSpacing(15)
+        left_layout.setContentsMargins(12, 10, 12, 10)
+        left_layout.setSpacing(10)
 
         # --- Logo / Header ---
         logo_label = QLabel("Shape Analysis Toolbox\nHippocampal Pipeline")
         font = logo_label.font()
-        font.setPointSize(14)
+        font.setPointSize(13)
         font.setBold(True)
         logo_label.setFont(font)
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_label.setStyleSheet("color: #2c3e50; padding: 10px; background-color: #ecf0f1; border-radius: 5px;")
+        logo_label.setStyleSheet("color: #2c3e50; padding: 8px 10px; background-color: #ecf0f1; border-radius: 5px;")
         left_layout.addWidget(logo_label)
 
         # --- QStackedWidget (Module Switching) ---
-        self.stacked_widget = QStackedWidget()
+        self.stacked_widget = AdaptiveStackedWidget()
         left_layout.addWidget(self.stacked_widget)
 
         # Create panels
@@ -59,3 +68,5 @@ class LeftPanel(QWidget):
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)
+        self.stacked_widget.updateGeometry()
+        self.updateGeometry()
