@@ -20,6 +20,7 @@ class AdaptiveStackedWidget(QStackedWidget):
 class LeftPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
+    signal_mesh_selected = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -47,8 +48,8 @@ class LeftPanel(QWidget):
         # Create panels
         self.import_panel = ImportPanel()
         self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
-        self.icp_panel = IcpPanel(self.import_panel.get_folder)
-        self.spharm_panel = SpharmPanel(self.import_panel.get_folder)
+        self.icp_panel = IcpPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
+        self.spharm_panel = SpharmPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.plsda_panel = PlsdaPanel(self.import_panel.get_folder)
         self.feature_panel = FeaturePanel(self.import_panel.get_folder)
 
@@ -65,11 +66,26 @@ class LeftPanel(QWidget):
             panel.signal_log_message.connect(self.signal_log_message)
             
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
-        self.import_panel.signal_directories_changed.connect(lambda i, o: self.fastsurfer_panel.update_run_button_state())
+        
+        def on_directories_changed(in_dir, out_dir):
+            self.fastsurfer_panel.update_run_button_state()
+            self.icp_panel.update_run_button_state()
+            self.spharm_panel.update_run_button_state()
+            
+        self.import_panel.signal_directories_changed.connect(on_directories_changed)
+
+        # Forward mesh selection from FastSurfer, ICP, and SPHARM to right panel
+        self.fastsurfer_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
+        self.icp_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
+        self.spharm_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)
         if index == 1:
             self.fastsurfer_panel.update_run_button_state()
+        elif index == 2:
+            self.icp_panel.update_run_button_state()
+        elif index == 3:
+            self.spharm_panel.update_run_button_state()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()

@@ -37,14 +37,19 @@ class RightPanel(QWidget):
         filename = os.path.basename(filepath)
         
         subject_id = None
-        if filename.startswith("lh_"):
-            subject_id = filename[3:].replace("_hippocampus.nii.gz", "").replace(".nii.gz", "")
-        elif filename.startswith("rh_"):
-            subject_id = filename[3:].replace("_hippocampus.nii.gz", "").replace(".nii.gz", "")
-        elif filename.endswith("_hippocampus_lh.nii.gz"):
-            subject_id = filename.replace("_hippocampus_lh.nii.gz", "")
-        elif filename.endswith("_hippocampus_rh.nii.gz"):
-            subject_id = filename.replace("_hippocampus_rh.nii.gz", "")
+        clean_name = filename
+        for sfx in ["_aligned_SPHARM.vtk", "_SPHARM.vtk", "_aligned.vtk", "_hippocampus.nii.gz", "_hippocampus_lh.nii.gz", "_hippocampus_rh.nii.gz", ".nii.gz", ".vtk"]:
+            if clean_name.endswith(sfx):
+                clean_name = clean_name[:-len(sfx)]
+                break
+
+        if clean_name.startswith("lh_") or clean_name.startswith("rh_"):
+            clean_name = clean_name[3:]
+        if clean_name.endswith("_lh") or clean_name.endswith("_rh"):
+            clean_name = clean_name[:-3]
+            
+        if clean_name:
+            subject_id = clean_name
             
         if subject_id:
             # Search for matching conformed MRI (.nii.gz or .mgz)

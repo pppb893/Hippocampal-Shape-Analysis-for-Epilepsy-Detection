@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
 
         self.h_splitter.addWidget(self.left_scroll)
         self.h_splitter.addWidget(self.right_scroll)
-        self.h_splitter.setSizes([380, 820])
+        self.h_splitter.setSizes([430, 850])
         
         self.v_splitter.addWidget(self.h_splitter)
         
@@ -201,7 +201,7 @@ class MainWindow(QMainWindow):
 
         # Connect signals between panels
         self.left_panel.signal_subject_selected.connect(self.right_panel.display_subject)
-        self.left_panel.fastsurfer_panel.signal_mesh_selected.connect(self.right_panel.display_mesh)
+        self.left_panel.signal_mesh_selected.connect(self.right_panel.display_mesh)
         self.left_panel.signal_log_message.connect(self.log)
         self.right_panel.signal_log_message.connect(self.log)
         self.module_combo.currentTextChanged.connect(self.on_module_changed)

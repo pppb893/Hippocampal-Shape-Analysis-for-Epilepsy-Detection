@@ -426,8 +426,8 @@ class VtkViewer(QWidget):
                     self.mesh_vtkWidget.GetRenderWindow().Render()
 
     def display_mesh(self, filepath):
-        if not filepath.endswith(".nii.gz") and not filepath.endswith(".mgz"):
-            self.signal_log_message.emit("[ERROR] Unsupported mesh format. Expected .nii.gz")
+        if not (filepath.endswith(".nii.gz") or filepath.endswith(".mgz") or filepath.endswith(".vtk")):
+            self.signal_log_message.emit("[ERROR] Unsupported mesh format. Expected .vtk, .nii.gz, or .mgz")
             return
             
         self.set_mesh_view_visible(True)
@@ -438,6 +438,27 @@ class VtkViewer(QWidget):
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
         
+        if filepath.endswith(".vtk"):
+            reader = vtk.vtkPolyDataReader()
+            reader.SetFileName(filepath)
+            reader.Update()
+            
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(reader.GetOutputPort())
+            mapper.ScalarVisibilityOff()
+            
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor(0.72, 0.82, 0.93)
+            actor.GetProperty().SetSpecular(0.25)
+            actor.GetProperty().SetSpecularPower(15)
+            
+            self.mesh_actor = actor
+            self.mesh_renderer.AddActor(self.mesh_actor)
+            self.mesh_renderer.ResetCamera()
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            return
+
         # Load NIFTI mask
         reader = vtk.vtkNIFTIImageReader()
         reader.SetFileName(filepath)
