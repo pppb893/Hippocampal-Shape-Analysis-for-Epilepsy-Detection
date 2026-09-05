@@ -79,6 +79,26 @@ class PlsdaPanel(QWidget):
         self.plsda_csv_input.setPlaceholderText("Auto (Filenames: HEALTHY vs TLE)")
         self.plsda_csv_input.setToolTip("Optional CSV file containing Subject group labels.")
         csv_btn = QPushButton("📁 Browse")
+        csv_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 6px 12px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+        """)
         csv_btn.clicked.connect(self.select_plsda_csv)
         csv_layout.addWidget(self.plsda_csv_input)
         csv_layout.addWidget(csv_btn)
@@ -102,19 +122,27 @@ class PlsdaPanel(QWidget):
         self.run_plsda_btn = QPushButton("Run PLS-DA Analysis")
         self.run_plsda_btn.setStyleSheet("""
             QPushButton {
-                background-color: #e67e22; 
-                color: white; 
-                padding: 10px 15px; 
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
-                font-size: 14px;
-                border-radius: 6px;
-                border: none;
+                font-size: 13px;
+                padding: 10px 15px;
+                border: 1px solid #ced6e0;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #f39c12;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background-color: #d35400;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+            QPushButton:disabled {
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
             }
         """)
         self.run_plsda_btn.clicked.connect(self.run_plsda_process)

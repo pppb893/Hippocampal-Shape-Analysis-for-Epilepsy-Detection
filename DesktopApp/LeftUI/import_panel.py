@@ -1,16 +1,19 @@
 import os
 import glob
+import json
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, 
-                             QLineEdit, QCheckBox, QGroupBox)
-from PyQt6.QtCore import pyqtSignal, Qt
+                             QLineEdit, QCheckBox, QGroupBox, QMenu, QMessageBox)
+from PyQt6.QtCore import pyqtSignal, Qt, QPoint
 
 class ImportPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
+    signal_directories_changed = pyqtSignal(str, str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.load_history()
         self.setup_ui()
         
     def setup_ui(self):
@@ -38,53 +41,85 @@ class ImportPanel(QWidget):
         ig_layout.setContentsMargins(10, 20, 10, 10)
         ig_layout.setSpacing(8)
 
-        # Row 1: Choose Data Directory and Choose Output Directory side by side
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        # Row 1: Choose Data Directory with Open File History button
+        data_btn_row = QHBoxLayout()
+        data_btn_row.setSpacing(6)
 
         dir_select_btn = QPushButton("Choose Data Directory")
         dir_select_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 11px;
                 padding: 7px 10px;
-                border: 1px solid #1f618d;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64b5f6, stop:1 #3498db);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f618d, stop:1 #1a5276);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         dir_select_btn.clicked.connect(self.select_directory)
-        btn_row.addWidget(dir_select_btn)
+        data_btn_row.addWidget(dir_select_btn, stretch=3)
 
-        out_dir_btn = QPushButton("Choose Output Directory")
-        out_dir_btn.setStyleSheet("""
+        self.history_btn = QPushButton("🕒 Open File History")
+        self.history_btn.setToolTip("View and select from previously chosen data directories")
+        self.history_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f39c12, stop:1 #d35400);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 11px;
-                padding: 7px 10px;
-                border: 1px solid #b94a00;
+                padding: 7px 8px;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f5b041, stop:1 #e67e22);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #b94a00, stop:1 #933c00);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+        """)
+        self.history_btn.clicked.connect(self.show_history_menu)
+        data_btn_row.addWidget(self.history_btn, stretch=2)
+
+        ig_layout.addLayout(data_btn_row)
+
+        # Row 2: Choose Output Directory
+        out_dir_btn = QPushButton("Choose Output Directory")
+        out_dir_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 7px 10px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         out_dir_btn.clicked.connect(self.select_out_directory)
-        btn_row.addWidget(out_dir_btn)
-
-        ig_layout.addLayout(btn_row)
+        ig_layout.addWidget(out_dir_btn)
 
         # Row 2: Input Path and Output Path side by side
         path_row = QHBoxLayout()
@@ -98,6 +133,8 @@ class ImportPanel(QWidget):
         self.folder_input.setReadOnly(True)
         self.folder_input.setPlaceholderText("No input directory selected...")
         self.folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        if getattr(self, 'last_input_dir', None) and os.path.isdir(self.last_input_dir):
+            self.folder_input.setText(self.last_input_dir)
         input_col.addWidget(input_lbl)
         input_col.addWidget(self.folder_input)
         path_row.addLayout(input_col)
@@ -110,6 +147,8 @@ class ImportPanel(QWidget):
         self.out_folder_input.setReadOnly(True)
         self.out_folder_input.setPlaceholderText("No output directory selected...")
         self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        if getattr(self, 'last_output_dir', None) and os.path.isdir(self.last_output_dir):
+            self.out_folder_input.setText(self.last_output_dir)
         output_col.addWidget(output_lbl)
         output_col.addWidget(self.out_folder_input)
         path_row.addLayout(output_col)
@@ -120,19 +159,22 @@ class ImportPanel(QWidget):
         import_action_btn = QPushButton("Import Data")
         import_action_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #219653);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 12px;
                 padding: 8px 10px;
-                border: 1px solid #1e7e34;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4cd97b, stop:1 #27ae60);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e7e34, stop:1 #145a24);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         import_action_btn.clicked.connect(self.on_import_clicked)
@@ -159,18 +201,22 @@ class ImportPanel(QWidget):
         self.remove_selected_btn = QPushButton("Remove Selected")
         self.remove_selected_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff7961, stop:1 #e74c3c);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
-                padding: 5px 10px;
-                border: 1px solid #c0392b;
+                font-size: 11px;
+                padding: 6px 10px;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff8a80, stop:1 #ff5252);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #c0392b, stop:1 #96281b);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         self.remove_selected_btn.clicked.connect(self.remove_selected_subject)
@@ -184,6 +230,117 @@ class ImportPanel(QWidget):
         
         import_layout.addWidget(subj_group)
 
+    def load_history(self):
+        self.history_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_history.json")
+        self.recent_dirs = []
+        self.last_input_dir = None
+        self.last_output_dir = None
+        
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.recent_dirs = data.get("recent_input_dirs", [])
+                    self.last_input_dir = data.get("last_input_dir")
+                    self.last_output_dir = data.get("last_output_dir")
+            except Exception:
+                self.recent_dirs = []
+        
+        # Seed with D:/input-mri if available and history is empty
+        if not self.recent_dirs and os.path.isdir("D:/input-mri"):
+            self.recent_dirs.append("D:/input-mri")
+            self.last_input_dir = "D:/input-mri"
+            self.save_history()
+
+    def save_history(self):
+        try:
+            data = {
+                "recent_input_dirs": self.recent_dirs,
+                "last_input_dir": getattr(self, 'last_input_dir', None),
+                "last_output_dir": getattr(self, 'last_output_dir', None)
+            }
+            with open(self.history_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
+    def add_to_history(self, path):
+        if not path or not os.path.isdir(path):
+            return
+        norm_p = os.path.normpath(os.path.abspath(path))
+        self.recent_dirs = [p for p in self.recent_dirs if os.path.normpath(os.path.abspath(p)) != norm_p]
+        self.recent_dirs.insert(0, path)
+        self.recent_dirs = self.recent_dirs[:10]
+        self.last_input_dir = path
+        self.save_history()
+
+    def show_history_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #ced6e0;
+                border-radius: 6px;
+                padding: 4px;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 6px 14px;
+                border-radius: 4px;
+                color: #2c3e50;
+            }
+            QMenu::item:selected {
+                background-color: #f1f2f6;
+                color: #2980b9;
+                font-weight: bold;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #e4e7eb;
+                margin: 4px 8px;
+            }
+        """)
+
+        if not self.recent_dirs:
+            empty_act = menu.addAction("No recent directories found")
+            empty_act.setEnabled(False)
+        else:
+            title_act = menu.addAction("Recent Data Directories:")
+            title_act.setEnabled(False)
+            font = title_act.font()
+            font.setBold(True)
+            title_act.setFont(font)
+            menu.addSeparator()
+
+            for path in self.recent_dirs:
+                act = menu.addAction(f"📁  {path}")
+                act.triggered.connect(lambda checked, p=path: self.select_history_path(p))
+
+            menu.addSeparator()
+            clear_act = menu.addAction("🧹  Clear History")
+            clear_act.triggered.connect(self.clear_history)
+
+        menu.exec(self.history_btn.mapToGlobal(QPoint(0, self.history_btn.height())))
+
+    def select_history_path(self, path):
+        if os.path.isdir(path):
+            self.folder_input.setText(path)
+            self.add_to_history(path)
+            self.signal_log_message.emit(f"Selected from history: {path}")
+            self.load_subjects_from_directory(path)
+            self.signal_log_message.emit(">>> Data loaded from history successfully.")
+            self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
+        else:
+            self.signal_log_message.emit(f"[WARNING] Directory no longer exists: {path}")
+            if path in self.recent_dirs:
+                self.recent_dirs.remove(path)
+                self.save_history()
+
+    def clear_history(self):
+        self.recent_dirs = []
+        self.save_history()
+        self.signal_log_message.emit("File history cleared.")
+
     def get_folder(self):
         return self.folder_input.text()
 
@@ -191,22 +348,28 @@ class ImportPanel(QWidget):
         return self.out_folder_input.text()
 
     def select_directory(self):
-        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        initial_dir = self.last_input_dir if getattr(self, 'last_input_dir', None) and os.path.isdir(self.last_input_dir) else ("D:/" if os.path.exists("D:/") else "C:/")
         folder = QFileDialog.getExistingDirectory(self, "Select Directory with NIFTI files", initial_dir)
         if folder:
             self.folder_input.setText(folder)
+            self.add_to_history(folder)
             self.signal_log_message.emit(f"Selected input directory: {folder}")
+            self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
 
     def select_out_directory(self):
-        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        initial_dir = self.last_output_dir if getattr(self, 'last_output_dir', None) and os.path.isdir(self.last_output_dir) else ("D:/" if os.path.exists("D:/") else "C:/")
         folder = QFileDialog.getExistingDirectory(self, "Select Output Directory", initial_dir)
         if folder:
             self.out_folder_input.setText(folder)
+            self.last_output_dir = folder
+            self.save_history()
             self.signal_log_message.emit(f"Selected output directory: {folder}")
+            self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
 
     def on_import_clicked(self):
         directory = self.folder_input.text()
         if directory and os.path.isdir(directory):
+            self.add_to_history(directory)
             self.load_subjects_from_directory(directory)
             self.signal_log_message.emit(">>> Data Imported Successfully.")
         else:
@@ -276,9 +439,23 @@ class ImportPanel(QWidget):
             return
             
         selected_rows = sorted(list(set([item.row() for item in selected_items])), reverse=True)
+        count = len(selected_rows)
+        if count == 0:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Removal",
+            f"Are you sure you want to remove {count} selected subject(s) from the list?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel
+        )
+
+        if reply != QMessageBox.StandardButton.Ok:
+            return
         
         for row in selected_rows:
             item = self.subjects_table.item(row, 0)
-            subject_name = item.text()
+            subject_name = item.text() if item else f"Row {row}"
             self.subjects_table.removeRow(row)
             self.signal_log_message.emit(f"Removed subject from list: {subject_name}")

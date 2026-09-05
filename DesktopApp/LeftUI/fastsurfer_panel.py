@@ -91,19 +91,22 @@ class FastsurferPanel(QWidget):
         browse_dir_btn = QPushButton("📁 Browse")
         browse_dir_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4b6584, stop:1 #34495e);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 11px;
                 padding: 6px 12px;
-                border: 1px solid #2c3e50;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5f7a99, stop:1 #415b76);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c3e50, stop:1 #1a252f);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         browse_dir_btn.clicked.connect(self.browse_results_directory)
@@ -112,19 +115,22 @@ class FastsurferPanel(QWidget):
         load_btn = QPushButton("🔄 Reload")
         load_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 11px;
                 padding: 6px 12px;
-                border: 1px solid #1e7e34;
+                border: 1px solid #ced6e0;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4cd97b, stop:1 #2ecc71);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e7e34, stop:1 #145a24);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         load_btn.clicked.connect(self.populate_results_table)
@@ -167,28 +173,36 @@ class FastsurferPanel(QWidget):
         self.run_fs_btn = QPushButton("▶ Run FastSurfer Pipeline")
         self.run_fs_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3498db, stop:1 #2980b9);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 12px;
                 padding: 9px 15px;
-                border: 1px solid #1f618d;
+                border: 1px solid #ced6e0;
                 border-radius: 5px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1f618d, stop:1 #154360);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
             QPushButton:disabled {
-                background: #bdc3c7;
-                color: #7f8c8d;
-                border: 1px solid #95a5a6;
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
             }
         """)
         self.run_fs_btn.clicked.connect(self.run_fastsurfer_process)
         fs_layout.addWidget(self.run_fs_btn)
+
+        self.fs_status_hint = QLabel("")
+        self.fs_status_hint.setWordWrap(True)
+        self.fs_status_hint.setStyleSheet("font-size: 11px; padding: 5px 8px; border-radius: 4px;")
+        fs_layout.addWidget(self.fs_status_hint)
         
         # 3. Segmentation Results Table with Category Tabs (All / Left / Right)
         res_group = QGroupBox("Segmentation Results & Meshes")
@@ -275,6 +289,61 @@ class FastsurferPanel(QWidget):
         res_layout.addWidget(self.results_table)
         
         fs_layout.addWidget(res_group)
+        self.update_run_button_state()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.update_run_button_state()
+
+    def update_run_button_state(self):
+        in_dir = self.get_folder().strip() if self.get_folder else ""
+        out_dir = self.get_output_folder().strip() if self.get_output_folder else ""
+        
+        has_in = bool(in_dir and os.path.isdir(in_dir))
+        has_out = bool(out_dir and os.path.isdir(out_dir))
+        
+        if not has_out or not has_in:
+            self.run_fs_btn.setEnabled(False)
+            reasons = []
+            if not has_in:
+                reasons.append("Input Directory")
+            if not has_out:
+                reasons.append("Output Directory")
+            missing = " & ".join(reasons)
+            msg = f"🔒 Locked: Please select {missing} in Data Importer before running."
+            self.run_fs_btn.setToolTip(msg)
+            if hasattr(self, 'fs_status_hint'):
+                self.fs_status_hint.setText(msg)
+                self.fs_status_hint.setStyleSheet("""
+                    color: #c0392b; 
+                    background-color: #fdedec; 
+                    border: 1px solid #f5b7b1; 
+                    font-size: 11px; 
+                    padding: 5px 8px; 
+                    border-radius: 4px;
+                    font-weight: 500;
+                """)
+                self.fs_status_hint.show()
+        else:
+            self.run_fs_btn.setEnabled(True)
+            self.run_fs_btn.setToolTip("Click to run FastSurfer Pipeline")
+            if hasattr(self, 'fs_status_hint'):
+                self.fs_status_hint.setText(f"✓ Ready: Results will be stored in: {out_dir}")
+                self.fs_status_hint.setStyleSheet("""
+                    color: #1e8449; 
+                    background-color: #eafaf1; 
+                    border: 1px solid #a9dfbf; 
+                    font-size: 11px; 
+                    padding: 5px 8px; 
+                    border-radius: 4px;
+                    font-weight: 500;
+                """)
+                self.fs_status_hint.show()
+                
+            # If fs_dir_input is empty, pre-fill it with output_dir/fastsurfer
+            if not self.fs_dir_input.text().strip():
+                expected_fs = os.path.join(os.path.abspath(out_dir), "fastsurfer")
+                self.fs_dir_input.setText(expected_fs)
 
     def browse_results_directory(self):
         initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
@@ -285,16 +354,19 @@ class FastsurferPanel(QWidget):
             self.populate_results_table()
 
     def run_fastsurfer_process(self):
-        input_dir = self.get_folder()
+        input_dir = self.get_folder().strip() if self.get_folder else ""
         if not input_dir or not os.path.isdir(input_dir):
             self.signal_log_message.emit("[ERROR] Please select a valid input directory first in Data Importer.")
+            return
+            
+        out_dir = self.get_output_folder().strip() if self.get_output_folder else ""
+        if not out_dir or not os.path.isdir(out_dir):
+            self.signal_log_message.emit("[ERROR] Please select an Output Directory in Data Importer before running.")
             return
             
         self.run_fs_btn.setEnabled(False)
         self.results_table.setRowCount(0)
         self.signal_log_message.emit(">>> Starting FastSurfer Pipeline...")
-        
-        out_dir = self.get_output_folder() if self.get_output_folder else None
         
         self.worker = FastSurferWorker(input_dir, out_dir)
         self.worker.signal_log.connect(self.signal_log_message.emit)
@@ -302,7 +374,7 @@ class FastsurferPanel(QWidget):
         self.worker.start()
 
     def on_fastsurfer_finished(self, success):
-        self.run_fs_btn.setEnabled(True)
+        self.update_run_button_state()
         if success:
             self.signal_log_message.emit(">>> FastSurfer Pipeline completed successfully.")
         else:

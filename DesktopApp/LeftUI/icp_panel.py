@@ -135,6 +135,26 @@ class IcpPanel(QWidget):
         self.icp_out_input.setPlaceholderText("Auto (output_<input_folder_name>)")
         self.icp_out_input.setToolTip("Optional: Select a custom output directory. If empty, a default output folder will be created.")
         out_btn = QPushButton("📁 Browse")
+        out_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 6px 12px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+        """)
         out_btn.clicked.connect(self.select_output_directory)
         out_layout.addWidget(self.icp_out_input)
         out_layout.addWidget(out_btn)
@@ -154,19 +174,27 @@ class IcpPanel(QWidget):
         self.run_icp_btn = QPushButton("Run ICP Registration")
         self.run_icp_btn.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60; 
-                color: white; 
-                padding: 10px 15px; 
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
-                font-size: 14px;
-                border-radius: 6px;
-                border: none;
+                font-size: 13px;
+                padding: 10px 15px;
+                border: 1px solid #ced6e0;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #2ecc71;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background-color: #219653;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+            QPushButton:disabled {
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
             }
         """)
         self.run_icp_btn.clicked.connect(self.run_icp_process)

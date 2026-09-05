@@ -65,8 +65,11 @@ class LeftPanel(QWidget):
             panel.signal_log_message.connect(self.signal_log_message)
             
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
+        self.import_panel.signal_directories_changed.connect(lambda i, o: self.fastsurfer_panel.update_run_button_state())
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)
+        if index == 1:
+            self.fastsurfer_panel.update_run_button_state()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()
