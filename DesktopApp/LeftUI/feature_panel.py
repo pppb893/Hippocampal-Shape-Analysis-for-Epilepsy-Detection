@@ -1,4 +1,5 @@
 import os
+import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                              QCheckBox, QGroupBox, QFormLayout, QComboBox, QSpinBox, 
                              QLineEdit, QFileDialog)
@@ -180,7 +181,7 @@ class FeaturePanel(QWidget):
             return
 
         folder_name = os.path.basename(os.path.normpath(selected_dir))
-        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        script_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         
         output_candidate = os.path.join(script_dir, f"output_{folder_name}", "spharm_results")
         if os.path.exists(output_candidate):
@@ -227,7 +228,7 @@ class FeaturePanel(QWidget):
         self.feature_process.finished.connect(lambda code, status: self.on_single_feature_process_finished(code, status, spharm_dir))
 
         args = [next_script, "--spharm_dir", spharm_dir]
-        self.feature_process.start("python", args)
+        self.feature_process.start(sys.executable, args)
 
     def on_single_feature_process_finished(self, exit_code, exit_status, spharm_dir):
         self.signal_log_message.emit(f">>> Step finished with code {exit_code}")

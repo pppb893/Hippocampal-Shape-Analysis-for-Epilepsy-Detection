@@ -1,8 +1,14 @@
 import os
+import sys
 import glob
 import subprocess
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QCheckBox, QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabBar, QLineEdit, QFileDialog)
 from PyQt6.QtCore import pyqtSignal, Qt, QThread
+
+def get_project_root():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 class FastSurferWorker(QThread):
     signal_log = pyqtSignal(str)
@@ -15,11 +21,13 @@ class FastSurferWorker(QThread):
 
     def run(self):
         self.signal_log.emit(f"Running run_pipeline.py with input_dir={self.input_dir}")
-        pipeline_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "run_pipeline.py")
-        pipeline_script = os.path.abspath(pipeline_script)
+        root_dir = get_project_root()
+        pipeline_script = os.path.join(root_dir, "run_pipeline.py")
+        if not os.path.isfile(pipeline_script):
+            pipeline_script = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "run_pipeline.py"))
         
         try:
-            cmd = ["python", pipeline_script, "--input_dir", self.input_dir]
+            cmd = [sys.executable, pipeline_script, "--input_dir", self.input_dir]
             if self.output_dir:
                 cmd.extend(["--output_dir", self.output_dir])
             

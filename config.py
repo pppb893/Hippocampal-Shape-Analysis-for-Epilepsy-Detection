@@ -6,21 +6,29 @@ config.py
 """
 
 import os
+import sys
+
+def _get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+BASE_DIR = _get_base_dir()
 
 # =============================================================================
 # [จำเป็น] ตั้งค่า Path ไปยัง FastSurfer
 # =============================================================================
 # ชี้ไปยังโฟลเดอร์ที่มี FastSurferCNN/ อยู่ข้างใน
-FASTSURFER_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "FastSurfer")
+FASTSURFER_DIR = os.path.join(BASE_DIR, "FastSurfer")
 
 # =============================================================================
 # [ไม่ต้องแก้] Output Directory
 # =============================================================================
 # ผลลัพธ์สุดท้าย (binary mask พร้อมเข้า SPHARM-PDM)
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputpreprocess")
+OUTPUT_DIR = os.path.join(BASE_DIR, "outputpreprocess")
 
 # ผลลัพธ์ระหว่างทาง (FastSurfer segmentation output)
-FASTSURFER_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fastsurfer_temp")
+FASTSURFER_OUTPUT_DIR = os.path.join(BASE_DIR, "fastsurfer_temp")
 
 # =============================================================================
 # [ไม่ต้องแก้] Preprocessing Parameters

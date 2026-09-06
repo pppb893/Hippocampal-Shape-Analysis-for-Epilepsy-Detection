@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import subprocess
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QCheckBox, 
@@ -7,10 +8,26 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QCheckBo
                              QHeaderView, QTabBar, QRadioButton, QButtonGroup, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QLocale
 
+def get_project_root():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 def find_slicer_salt_exe():
     env_path = os.environ.get("SLICER_EXE")
     if env_path and os.path.isfile(env_path):
         return env_path
+    
+    root = get_project_root()
+    local_candidates = [
+        os.path.join(root, "SlicerSALT", "SlicerSALT.exe"),
+        os.path.join(root, "Prerequisites", "SlicerSALT", "SlicerSALT.exe"),
+        os.path.join(root, "Prerequisites", "SlicerSALT 6.0.0", "SlicerSALT.exe"),
+    ]
+    for cand in local_candidates:
+        if os.path.isfile(cand):
+            return cand
+            
     candidates = glob.glob(r"C:\Program Files\SlicerSALT*\SlicerSALT.exe")
     if candidates:
         return candidates[0]
@@ -32,7 +49,7 @@ class SpharmWorker(QThread):
             self.signal_finished.emit(False)
             return
 
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        project_root = get_project_root()
         batch_script = os.path.join(project_root, "SPHARM", "run_spharm_batch.py")
         realign_script = os.path.join(project_root, "SPHARM", "realign_spharm.py")
 
@@ -99,7 +116,7 @@ class SpharmWorker(QThread):
                 if os.path.isfile(realign_script):
                     self.signal_log.emit(f">>> Re-aligning anatomical landmarks for {side_name}...")
                     realign_cmd = [
-                        "python",
+                        sys.executable,
                         realign_script,
                         "--spharm_dir", spharm_results_dir
                     ]

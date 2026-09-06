@@ -1,4 +1,5 @@
 import os
+import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
                              QCheckBox, QGroupBox, QFormLayout, QComboBox, QSpinBox, 
                              QLineEdit, QFileDialog)
@@ -171,7 +172,7 @@ class PlsdaPanel(QWidget):
             return
 
         folder_name = os.path.basename(os.path.normpath(selected_dir))
-        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        script_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         
         output_candidate = os.path.join(script_dir, f"output_{folder_name}")
         if os.path.exists(output_candidate):
@@ -202,7 +203,7 @@ class PlsdaPanel(QWidget):
         ]
 
         self.run_plsda_btn.setEnabled(False)
-        self.plsda_process.start("python", args)
+        self.plsda_process.start(sys.executable, args)
 
     def handle_plsda_stdout(self):
         data = self.plsda_process.readAllStandardOutput()
