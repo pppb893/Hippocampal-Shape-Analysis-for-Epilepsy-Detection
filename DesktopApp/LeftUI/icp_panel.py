@@ -124,6 +124,8 @@ class IcpWorker(QThread):
 class IcpPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_template_toggled = pyqtSignal(bool)
+    signal_icp_completed = pyqtSignal()
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -143,8 +145,8 @@ class IcpPanel(QWidget):
         help_label.setStyleSheet("color: #555; font-size: 11px;")
         icp_layout.addWidget(help_label)
         
-        # 1. Directory Location Group
-        dir_group = QGroupBox("FastSurfer Inputs && Output Location")
+        # 1. Directory Configuration (Import Meshes & Dedicated output_ICP)
+        dir_group = QGroupBox("Directory Configuration (Mesh Import & Output)")
         dir_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
@@ -162,16 +164,23 @@ class IcpPanel(QWidget):
             }
         """)
         dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(10, 20, 10, 10)
+        dir_layout.setContentsMargins(10, 16, 10, 10)
         dir_layout.setSpacing(6)
 
-        dir_row = QHBoxLayout()
-        self.icp_dir_input = QLineEdit()
-        self.icp_dir_input.setPlaceholderText("Auto (output_dir/icp)")
-        dir_row.addWidget(self.icp_dir_input)
+        # Row A: Input Meshes (FastSurfer / Segmentation Folder)
+        in_lbl = QLabel("📥 Input Meshes (FastSurfer / Custom Mesh Folder):")
+        in_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
+        dir_layout.addWidget(in_lbl)
 
-        browse_dir_btn = QPushButton("📁 Browse")
-        browse_dir_btn.setStyleSheet("""
+        in_row = QHBoxLayout()
+        self.mesh_input_dir = QLineEdit()
+        self.mesh_input_dir.setPlaceholderText("Auto (FastSurfer output) or Browse to import meshes...")
+        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
+        in_row.addWidget(self.mesh_input_dir)
+
+        browse_in_btn = QPushButton("📁 Browse...")
+        browse_in_btn.setToolTip("Import existing FastSurfer mesh folder from disk (skip previous steps)")
+        browse_in_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
@@ -186,15 +195,67 @@ class IcpPanel(QWidget):
                 border: 1px solid #b2bec3;
                 color: #1a252f;
             }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
+        """)
+        browse_in_btn.clicked.connect(self.browse_input_directory)
+        in_row.addWidget(browse_in_btn)
+
+        reset_in_btn = QPushButton("🔄 Pipeline")
+        reset_in_btn.setToolTip("Reset input back to current Data Importer / FastSurfer pipeline output")
+        reset_in_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
         """)
-        browse_dir_btn.clicked.connect(self.browse_output_directory)
-        dir_row.addWidget(browse_dir_btn)
+        reset_in_btn.clicked.connect(self.reset_to_pipeline_input)
+        in_row.addWidget(reset_in_btn)
+
+        dir_layout.addLayout(in_row)
+
+        # Row B: Output Directory (output_ICP)
+        out_lbl = QLabel("📤 Output Directory (Dedicated output_ICP):")
+        out_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50; margin-top: 4px;")
+        dir_layout.addWidget(out_lbl)
+
+        out_row = QHBoxLayout()
+        self.icp_dir_input = QLineEdit()
+        self.icp_dir_input.setPlaceholderText("Auto (.../output_ICP)")
+        self.icp_dir_input.textChanged.connect(self.populate_results_table)
+        out_row.addWidget(self.icp_dir_input)
+
+        browse_out_btn = QPushButton("📁 Browse...")
+        browse_out_btn.setToolTip("Select custom destination for output_ICP")
+        browse_out_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+        """)
+        browse_out_btn.clicked.connect(self.browse_output_directory)
+        out_row.addWidget(browse_out_btn)
 
         reload_btn = QPushButton("🔄 Reload")
+        reload_btn.setToolTip("Scan output_ICP folder and reload results table")
         reload_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -210,15 +271,11 @@ class IcpPanel(QWidget):
                 border: 1px solid #b2bec3;
                 color: #1a252f;
             }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
         """)
         reload_btn.clicked.connect(self.populate_results_table)
-        dir_row.addWidget(reload_btn)
+        out_row.addWidget(reload_btn)
 
-        dir_layout.addLayout(dir_row)
+        dir_layout.addLayout(out_row)
         icp_layout.addWidget(dir_group)
 
         # 2. Side Selection
@@ -417,8 +474,30 @@ class IcpPanel(QWidget):
             }
         """)
         res_layout = QVBoxLayout(res_group)
-        res_layout.setContentsMargins(10, 20, 10, 10)
+        res_layout.setContentsMargins(10, 16, 10, 10)
         res_layout.setSpacing(6)
+
+        # Reference template overlay toggle checkbox
+        template_bar = QHBoxLayout()
+        template_bar.setContentsMargins(0, 0, 0, 2)
+        self.template_cb = QCheckBox("Show Reference Template (Overlay in 3D)")
+        self.template_cb.setToolTip("Overlay standard reference template (mean shape) in 3D view")
+        self.template_cb.setStyleSheet("""
+            QCheckBox {
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #f39c12;
+                border: 1px solid #d68910;
+            }
+        """)
+        self.template_cb.toggled.connect(self.signal_template_toggled.emit)
+        template_bar.addWidget(self.template_cb)
+        template_bar.addStretch()
+        res_layout.addLayout(template_bar)
 
         self.tab_bar = QTabBar()
         self.tab_bar.addTab("All")
@@ -511,37 +590,162 @@ class IcpPanel(QWidget):
             self.icp_pw_landmarks_spin.setValue(200)
             self.icp_interp_combo.setCurrentText("NearestNeighbor")
 
+    def browse_input_directory(self):
+        initial = self.mesh_input_dir.text().strip() or ("D:/" if os.path.exists("D:/") else "C:/")
+        folder = QFileDialog.getExistingDirectory(self, "Select Mesh Folder (FastSurfer Output or Custom)", initial)
+        if folder:
+            self.mesh_input_dir.setText(folder)
+            self.icp_dir_input.setText(self.get_default_output_dir(folder))
+            self.update_run_button_state()
+            self.populate_results_table()
+
+    def reset_to_pipeline_input(self):
+        self.mesh_input_dir.clear()
+        self.icp_dir_input.setText(self.get_default_output_dir())
+        self.update_run_button_state()
+        self.populate_results_table()
+        self.signal_log_message.emit("[INFO] Reset ICP input to default pipeline output.")
+
+    def on_input_dir_changed(self, text):
+        if text.strip() and os.path.isdir(text.strip()):
+            self.icp_dir_input.setText(self.get_default_output_dir(text.strip()))
+        elif not text.strip():
+            self.icp_dir_input.setText(self.get_default_output_dir())
+        self.update_run_button_state()
+        self.populate_results_table()
+
     def browse_output_directory(self):
-        initial = "D:/" if os.path.exists("D:/") else "C:/"
-        folder = QFileDialog.getExistingDirectory(self, "Select ICP Output Directory", initial)
+        initial = self.icp_dir_input.text().strip() or ("D:/" if os.path.exists("D:/") else "C:/")
+        folder = QFileDialog.getExistingDirectory(self, "Select ICP Output Directory (output_ICP)", initial)
         if folder:
             self.icp_dir_input.setText(folder)
             self.populate_results_table()
             self.update_run_button_state()
 
-    def get_source_paths(self):
-        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
-        if not out_base or not os.path.isdir(out_base):
-            return None, None, None
+    def resolve_input_folders(self):
+        """
+        Resolves Left and Right input folders.
+        Checks:
+        1. Custom input folder (self.mesh_input_dir) if provided.
+        2. Pipeline FastSurfer folder (from get_output_folder).
+        """
+        custom_input = self.mesh_input_dir.text().strip()
+        candidates = []
+        if custom_input and os.path.isdir(custom_input):
+            candidates.append(custom_input)
             
-        lh_dir = os.path.join(out_base, "fastsurfer", "left_hippocampus")
-        rh_dir = os.path.join(out_base, "fastsurfer", "right_hippocampus")
-        icp_out = os.path.join(out_base, "icp")
-        return lh_dir, rh_dir, icp_out
+        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_base and os.path.isdir(out_base):
+            candidates.append(os.path.join(out_base, "fastsurfer"))
+            candidates.append(out_base)
+
+        for base in candidates:
+            # Check 0: If base itself is named left_hippocampus or right_hippocampus
+            base_name = os.path.basename(base.rstrip(r'\/')).lower()
+            parent = os.path.dirname(base.rstrip(r'\/'))
+            if base_name in ("left_hippocampus", "lh", "left"):
+                for cand_r in ["right_hippocampus", "rh", "right"]:
+                    r_path = os.path.join(parent, cand_r)
+                    if os.path.isdir(r_path) and glob.glob(os.path.join(r_path, "*.nii*")):
+                        return base, r_path, parent
+                return base, None, parent
+            elif base_name in ("right_hippocampus", "rh", "right"):
+                for cand_l in ["left_hippocampus", "lh", "left"]:
+                    l_path = os.path.join(parent, cand_l)
+                    if os.path.isdir(l_path) and glob.glob(os.path.join(l_path, "*.nii*")):
+                        return l_path, base, parent
+                return None, base, parent
+
+            # Check 1: subfolders left_hippocampus and right_hippocampus
+            lh = os.path.join(base, "left_hippocampus")
+            rh = os.path.join(base, "right_hippocampus")
+            if (os.path.isdir(lh) and glob.glob(os.path.join(lh, "*.nii*"))) or \
+               (os.path.isdir(rh) and glob.glob(os.path.join(rh, "*.nii*"))):
+                return lh, rh, base
+                
+            # Check 2: subfolders fastsurfer/left_hippocampus and fastsurfer/right_hippocampus
+            lh_fs = os.path.join(base, "fastsurfer", "left_hippocampus")
+            rh_fs = os.path.join(base, "fastsurfer", "right_hippocampus")
+            if (os.path.isdir(lh_fs) and glob.glob(os.path.join(lh_fs, "*.nii*"))) or \
+               (os.path.isdir(rh_fs) and glob.glob(os.path.join(rh_fs, "*.nii*"))):
+                return lh_fs, rh_fs, base
+
+            # Check 3: subfolders left and right
+            lh_lr = os.path.join(base, "left")
+            rh_lr = os.path.join(base, "right")
+            if (os.path.isdir(lh_lr) and glob.glob(os.path.join(lh_lr, "*.nii*"))) or \
+               (os.path.isdir(rh_lr) and glob.glob(os.path.join(rh_lr, "*.nii*"))):
+                return lh_lr, rh_lr, base
+
+            # Check 4: base folder directly containing nii.gz files
+            nii_files = glob.glob(os.path.join(base, "*.nii*"))
+            if nii_files:
+                lh_files = [f for f in nii_files if os.path.basename(f).startswith("lh_") or "_lh." in os.path.basename(f).lower() or "left" in os.path.basename(f).lower()]
+                rh_files = [f for f in nii_files if os.path.basename(f).startswith("rh_") or "_rh." in os.path.basename(f).lower() or "right" in os.path.basename(f).lower()]
+                if lh_files and rh_files:
+                    sub_lh = os.path.join(base, "left_hippocampus")
+                    sub_rh = os.path.join(base, "right_hippocampus")
+                    os.makedirs(sub_lh, exist_ok=True)
+                    os.makedirs(sub_rh, exist_ok=True)
+                    for f in lh_files:
+                        dst = os.path.join(sub_lh, os.path.basename(f))
+                        if not os.path.exists(dst):
+                            try: os.link(f, dst)
+                            except Exception:
+                                import shutil; shutil.copy2(f, dst)
+                    for f in rh_files:
+                        dst = os.path.join(sub_rh, os.path.basename(f))
+                        if not os.path.exists(dst):
+                            try: os.link(f, dst)
+                            except Exception:
+                                import shutil; shutil.copy2(f, dst)
+                    return sub_lh, sub_rh, base
+                elif lh_files:
+                    return base, None, os.path.dirname(base)
+                elif rh_files:
+                    return None, base, os.path.dirname(base)
+                else:
+                    return base, base, base
+
+        return None, None, None
+
+    def get_default_output_dir(self, resolved_base=None):
+        custom_input = self.mesh_input_dir.text().strip()
+        if custom_input and os.path.isdir(custom_input):
+            p_dir = os.path.dirname(custom_input.rstrip(r'\/'))
+            if p_dir and os.path.isdir(p_dir):
+                return os.path.join(p_dir, "output_ICP")
+            return os.path.join(custom_input, "output_ICP")
+
+        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_base and os.path.isdir(out_base):
+            return os.path.join(out_base, "output_ICP")
+        elif resolved_base and os.path.isdir(resolved_base):
+            p_dir = os.path.dirname(resolved_base.rstrip(r'\/'))
+            if p_dir and os.path.isdir(p_dir):
+                return os.path.join(p_dir, "output_ICP")
+            return os.path.join(resolved_base, "output_ICP")
+        return "D:/output_ICP" if os.path.exists("D:/") else "C:/output_ICP"
+
+    def get_source_paths(self):
+        return self.resolve_input_folders()
 
     def update_run_button_state(self):
-        lh_dir, rh_dir, icp_out = self.get_source_paths()
+        lh_dir, rh_dir, resolved_base = self.resolve_input_folders()
         
-        has_lh = bool(lh_dir and os.path.isdir(lh_dir) and glob.glob(os.path.join(lh_dir, "*.nii.gz")))
-        has_rh = bool(rh_dir and os.path.isdir(rh_dir) and glob.glob(os.path.join(rh_dir, "*.nii.gz")))
+        has_lh = bool(lh_dir and os.path.isdir(lh_dir) and glob.glob(os.path.join(lh_dir, "*.nii*")))
+        has_rh = bool(rh_dir and os.path.isdir(rh_dir) and glob.glob(os.path.join(rh_dir, "*.nii*")))
         
+        default_out = self.get_default_output_dir(resolved_base)
         custom_dir = self.icp_dir_input.text().strip()
-        if not custom_dir and icp_out:
-            self.icp_dir_input.setText(icp_out)
+        if not custom_dir and default_out:
+            self.icp_dir_input.setText(default_out)
             
+        target_out = custom_dir if custom_dir else default_out
+        
         if not has_lh and not has_rh:
             self.run_icp_btn.setEnabled(False)
-            msg = "🔒 Locked: FastSurfer outputs (left_hippocampus / right_hippocampus) not found. Please run FastSurfer first."
+            msg = "[LOCKED] No FastSurfer mesh outputs found. Please select a folder with meshes (Browse) or run FastSurfer first."
             self.run_icp_btn.setToolTip(msg)
             self.icp_status_hint.setText(msg)
             self.icp_status_hint.setStyleSheet("""
@@ -556,10 +760,10 @@ class IcpPanel(QWidget):
         else:
             self.run_icp_btn.setEnabled(True)
             self.run_icp_btn.setToolTip("Click to run Groupwise ICP Registration")
-            lh_count = len(glob.glob(os.path.join(lh_dir, "*.nii.gz"))) if has_lh else 0
-            rh_count = len(glob.glob(os.path.join(rh_dir, "*.nii.gz"))) if has_rh else 0
-            target_out = custom_dir if custom_dir else icp_out
-            msg = f"✓ Ready: Detected {lh_count} Left & {rh_count} Right subjects. Output will be saved to: {target_out}"
+            lh_count = len(glob.glob(os.path.join(lh_dir, "*.nii*"))) if has_lh else 0
+            rh_count = len(glob.glob(os.path.join(rh_dir, "*.nii*"))) if has_rh else 0
+            src_type = "Custom Folder" if self.mesh_input_dir.text().strip() else "Pipeline"
+            msg = f"[OK] Ready ({src_type}): Detected {lh_count} Left & {rh_count} Right meshes. Results will be saved to: {target_out}"
             self.icp_status_hint.setText(msg)
             self.icp_status_hint.setStyleSheet("""
                 color: #1e8449; 
@@ -574,26 +778,32 @@ class IcpPanel(QWidget):
         self.populate_results_table()
 
     def run_icp_process(self):
-        lh_dir, rh_dir, default_icp_out = self.get_source_paths()
-        target_base = self.icp_dir_input.text().strip() or default_icp_out
+        lh_dir, rh_dir, resolved_base = self.resolve_input_folders()
+        target_base = self.icp_dir_input.text().strip() or self.get_default_output_dir(resolved_base)
         
         if not target_base:
-            self.signal_log_message.emit("[ERROR] Output directory is missing. Please configure Output in Data Importer.")
+            self.signal_log_message.emit("[ERROR] Output directory is missing. Please configure Output Directory.")
             return
 
+        os.makedirs(target_base, exist_ok=True)
         tasks = []
         mode = self.side_btn_group.checkedId()
         
         # 0: Both, 1: Left only, 2: Right only
+        # Create output_ICP/left and output_ICP/right separately
         if mode in (0, 1):
             if lh_dir and os.path.isdir(lh_dir):
-                tasks.append(("left", lh_dir, os.path.join(target_base, "left")))
+                out_left = os.path.join(target_base, "left")
+                os.makedirs(out_left, exist_ok=True)
+                tasks.append(("left", lh_dir, out_left))
             else:
                 self.signal_log_message.emit("[WARNING] Left hippocampus folder not found.")
                 
         if mode in (0, 2):
             if rh_dir and os.path.isdir(rh_dir):
-                tasks.append(("right", rh_dir, os.path.join(target_base, "right")))
+                out_right = os.path.join(target_base, "right")
+                os.makedirs(out_right, exist_ok=True)
+                tasks.append(("right", rh_dir, out_right))
             else:
                 self.signal_log_message.emit("[WARNING] Right hippocampus folder not found.")
 
@@ -614,7 +824,7 @@ class IcpPanel(QWidget):
 
         self.run_icp_btn.setEnabled(False)
         self.results_table.setRowCount(0)
-        self.signal_log_message.emit(">>> Initiating Groupwise ICP Alignment Pipeline...")
+        self.signal_log_message.emit(f">>> Initiating Groupwise ICP Alignment Pipeline (Output: {target_base})...")
 
         self.worker = IcpWorker(tasks, adv_params)
         self.worker.signal_log.connect(self.signal_log_message.emit)
@@ -625,6 +835,7 @@ class IcpPanel(QWidget):
         self.update_run_button_state()
         if success:
             self.signal_log_message.emit(">>> Groupwise ICP Registration Pipeline completed successfully.")
+            self.signal_icp_completed.emit()
         else:
             self.signal_log_message.emit("[ERROR] ICP Registration completed with warnings or errors.")
         self.populate_results_table()
@@ -638,6 +849,11 @@ class IcpPanel(QWidget):
             self.current_side_filter = "all"
         self.update_table_display()
 
+    def set_template_visible(self, visible: bool):
+        self.template_cb.blockSignals(True)
+        self.template_cb.setChecked(visible)
+        self.template_cb.blockSignals(False)
+
     def populate_results_table(self):
         target_base = self.icp_dir_input.text().strip()
         if not target_base:
@@ -650,12 +866,18 @@ class IcpPanel(QWidget):
                 (os.path.join(target_base, "left", "aligned_meshes"), "lh", "Left (LH)"),
                 (os.path.join(target_base, "right", "aligned_meshes"), "rh", "Right (RH)"),
                 (os.path.join(target_base, "aligned_meshes"), "all", "Aligned"),
+                (os.path.join(target_base, "output_left_hippocampus"), "lh", "Left (LH)"),
+                (os.path.join(target_base, "output_right_hippocampus"), "rh", "Right (RH)"),
+                (os.path.join(target_base, "left"), "lh", "Left (LH)"),
+                (os.path.join(target_base, "right"), "rh", "Right (RH)"),
+                (target_base, "all", "Aligned"),
             ]
             
             seen = set()
             for directory, side_key, side_label in search_dirs:
                 if os.path.isdir(directory):
-                    for vtk_file in glob.glob(os.path.join(directory, "*.vtk")):
+                    mesh_files = glob.glob(os.path.join(directory, "*.vtk")) + glob.glob(os.path.join(directory, "*.ply"))
+                    for vtk_file in mesh_files:
                         norm_p = os.path.normpath(vtk_file)
                         if norm_p not in seen:
                             seen.add(norm_p)

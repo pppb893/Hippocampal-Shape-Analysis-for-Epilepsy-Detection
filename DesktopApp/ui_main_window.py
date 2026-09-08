@@ -204,7 +204,12 @@ class MainWindow(QMainWindow):
         self.left_panel.signal_mesh_selected.connect(self.right_panel.display_mesh)
         self.left_panel.signal_log_message.connect(self.log)
         self.right_panel.signal_log_message.connect(self.log)
+        self.left_panel.signal_template_toggled.connect(self.right_panel.viewer.set_template_visible)
+        self.right_panel.signal_template_toggled.connect(self.left_panel.set_template_visible)
         self.module_combo.currentTextChanged.connect(self.on_module_changed)
+
+        # Set initial view mode based on current module selection
+        self.on_module_changed(self.module_combo.currentText())
 
         self.log("SlicerSALT-style UI initialized successfully.")
         
@@ -374,7 +379,11 @@ class MainWindow(QMainWindow):
         index = self.module_combo.findText(module_name)
         self.left_panel.switch_module(index)
         
-        if module_name == "FastSurfer Segmentation":
+        if module_name in ("ICP Registration", "SPHARM Processing"):
+            self.right_panel.set_view_mode("full_3d", module_name)
+        elif module_name == "FastSurfer Segmentation":
+            self.right_panel.set_view_mode("quad", module_name)
             self.right_panel.viewer.set_mesh_view_visible(True)
         else:
+            self.right_panel.set_view_mode("quad", module_name)
             self.right_panel.viewer.set_mesh_view_visible(False)

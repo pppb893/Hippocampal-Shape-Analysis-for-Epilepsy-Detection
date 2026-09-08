@@ -21,6 +21,7 @@ class LeftPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(str, str)
+    signal_template_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,10 +75,24 @@ class LeftPanel(QWidget):
             
         self.import_panel.signal_directories_changed.connect(on_directories_changed)
 
+        # Pipeline sequence auto-progression:
+        # FastSurfer completes -> ICP automatically ready to run using FastSurfer meshes
+        self.fastsurfer_panel.signal_fastsurfer_completed.connect(self.icp_panel.update_run_button_state)
+        # ICP completes -> SPHARM automatically ready to run using ICP aligned meshes
+        self.icp_panel.signal_icp_completed.connect(self.spharm_panel.update_run_button_state)
+
         # Forward mesh selection from FastSurfer, ICP, and SPHARM to right panel
         self.fastsurfer_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.icp_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.spharm_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
+
+        # Forward reference template toggle signals from ICP and SPHARM panels
+        self.icp_panel.signal_template_toggled.connect(self.signal_template_toggled)
+        self.spharm_panel.signal_template_toggled.connect(self.signal_template_toggled)
+
+    def set_template_visible(self, visible: bool):
+        self.icp_panel.set_template_visible(visible)
+        self.spharm_panel.set_template_visible(visible)
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)

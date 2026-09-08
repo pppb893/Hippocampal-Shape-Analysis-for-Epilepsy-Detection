@@ -50,6 +50,7 @@ class FastSurferWorker(QThread):
 class FastsurferPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_fastsurfer_completed = pyqtSignal()
     
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -385,6 +386,7 @@ class FastsurferPanel(QWidget):
         self.update_run_button_state()
         if success:
             self.signal_log_message.emit(">>> FastSurfer Pipeline completed successfully.")
+            self.signal_fastsurfer_completed.emit()
         else:
             self.signal_log_message.emit("[ERROR] FastSurfer Pipeline failed or finished with errors.")
         

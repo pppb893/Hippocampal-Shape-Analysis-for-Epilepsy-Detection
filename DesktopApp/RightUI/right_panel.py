@@ -6,6 +6,7 @@ from .vtk_viewer import VtkViewer
 
 class RightPanel(QWidget):
     signal_log_message = pyqtSignal(str)
+    signal_template_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -20,6 +21,10 @@ class RightPanel(QWidget):
         right_layout.addWidget(self.viewer)
         
         self.viewer.signal_log_message.connect(self.signal_log_message)
+        self.viewer.signal_template_toggled.connect(self.signal_template_toggled)
+
+    def set_view_mode(self, mode: str, module_name: str = ""):
+        self.viewer.set_view_mode(mode, module_name)
 
     def display_subject(self, filepath):
         self.signal_log_message.emit(f"Displaying subject: {os.path.basename(filepath)}")
@@ -27,7 +32,13 @@ class RightPanel(QWidget):
 
     def display_mesh(self, filepath, side_filter="all"):
         self.signal_log_message.emit(f"Displaying 3D Mesh: {os.path.basename(filepath)}")
-        self.viewer.display_mesh(filepath)
+        self.viewer.display_mesh(filepath, side_filter=side_filter)
+        
+        # If in full_3d mode (ICP / SPHARM), skip 2D MRI slice search and overlay
+        if getattr(self.viewer, 'view_mode', 'quad') == "full_3d":
+            self.signal_log_message.emit(f"[INFO] 3D mesh rendered for {os.path.basename(filepath)} in Full 3D View.")
+            return
+
         self.viewer.set_3d_plane_buttons_visible(True)
         
         # Infer output directory and subject id from the mesh filepath

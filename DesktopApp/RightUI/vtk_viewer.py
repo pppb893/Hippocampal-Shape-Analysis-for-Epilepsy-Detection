@@ -1,6 +1,7 @@
 import vtk
 import os
-from PyQt6.QtWidgets import QWidget, QGridLayout, QFrame, QVBoxLayout, QSlider, QHBoxLayout, QPushButton, QLabel
+from PyQt6.QtWidgets import (QWidget, QGridLayout, QFrame, QVBoxLayout, QSlider, 
+                             QHBoxLayout, QPushButton, QLabel, QCheckBox)
 from PyQt6.QtCore import pyqtSignal, Qt
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
@@ -43,11 +44,17 @@ class CustomQVTKWidget(QVTKRenderWindowInteractor):
 
 class VtkViewer(QWidget):
     signal_log_message = pyqtSignal(str)
+    signal_template_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.maximized_frame = None
         self.mesh_view_enabled = False
+        self.view_mode = "quad"  # 'quad' (4-view) or 'full_3d' (single large 3D viewport)
+        self.current_module_name = ""
+        self.current_mesh_path = None
+        self.current_side_filter = "all"
+        self.template_actor = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -108,19 +115,56 @@ class VtkViewer(QWidget):
         # Set up VTK Viewer for 3D Mesh
         layout_mesh = self.mesh_frame.layout()
         mesh_top_bar = QHBoxLayout()
-        mesh_top_bar.setContentsMargins(5, 5, 5, 5)
+        mesh_top_bar.setContentsMargins(6, 4, 6, 4)
+        mesh_top_bar.setSpacing(8)
         
-        mesh_title_lbl = QLabel("3D Mesh View")
-        mesh_title_lbl.setStyleSheet("color: white; font-weight: bold; border: none; background: transparent;")
+        self.mesh_title_lbl = QLabel("3D Mesh View")
+        self.mesh_title_lbl.setStyleSheet("color: white; font-weight: bold; border: none; background: transparent; font-size: 12px;")
         
-        mesh_max_btn = QPushButton("◻")
-        mesh_max_btn.setFixedSize(24, 24)
-        mesh_max_btn.setStyleSheet("QPushButton { background: transparent; color: white; border: 1px solid #777; border-radius: 3px; font-weight: bold;} QPushButton:hover { background: #555; }")
-        mesh_max_btn.clicked.connect(lambda: self.toggle_maximize(self.mesh_frame))
+        self.mesh_legend_lbl = QLabel("")
+        self.mesh_legend_lbl.setStyleSheet("color: #ecf0f1; font-size: 11px; background: rgba(20,25,35,180); padding: 2px 8px; border-radius: 4px; border: 1px solid #3d4d65;")
+        self.mesh_legend_lbl.setVisible(False)
         
-        mesh_top_bar.addWidget(mesh_title_lbl)
+        self.template_cb = QCheckBox("Show Reference Template")
+        self.template_cb.setToolTip("Overlay standard reference template (mean shape) in 3D")
+        self.template_cb.setStyleSheet("""
+            QCheckBox {
+                color: #f1c40f;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+                background: rgba(241, 196, 15, 0.12);
+                border: 1px solid #f39c12;
+                border-radius: 4px;
+                padding: 3px 8px;
+            }
+            QCheckBox:hover {
+                background: rgba(241, 196, 15, 0.22);
+            }
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
+                border: 1px solid #f39c12;
+                border-radius: 3px;
+                background: #1e2230;
+            }
+            QCheckBox::indicator:checked {
+                background: #f39c12;
+            }
+        """)
+        self.template_cb.toggled.connect(self.on_template_cb_toggled)
+        self.template_cb.setVisible(False) # Hidden initially in quad mode, shown in full_3d mode
+        
+        self.mesh_max_btn = QPushButton("◻")
+        self.mesh_max_btn.setFixedSize(24, 24)
+        self.mesh_max_btn.setStyleSheet("QPushButton { background: transparent; color: white; border: 1px solid #777; border-radius: 3px; font-weight: bold;} QPushButton:hover { background: #555; }")
+        self.mesh_max_btn.clicked.connect(lambda: self.toggle_maximize(self.mesh_frame))
+        
+        mesh_top_bar.addWidget(self.mesh_title_lbl)
+        mesh_top_bar.addWidget(self.mesh_legend_lbl)
         mesh_top_bar.addStretch()
-        mesh_top_bar.addWidget(mesh_max_btn)
+        mesh_top_bar.addWidget(self.template_cb)
+        mesh_top_bar.addWidget(self.mesh_max_btn)
         
         layout_mesh.addLayout(mesh_top_bar)
         
@@ -361,12 +405,190 @@ class VtkViewer(QWidget):
         self.mesh_vtkWidget.GetRenderWindow().Render()
         self.signal_log_message.emit(f"3D Slice Plane ({orientation.capitalize()}) {'shown' if visible else 'hidden'} in 3D View.")
 
+    def set_view_mode(self, mode: str, module_name: str = ""):
+        """
+        Switches between:
+        - 'quad': 4-view layout (Axial, Coronal, Sagittal + 3D) for Data Importer & FastSurfer
+        - 'full_3d': Single large 3D viewport for ICP Registration & SPHARM Processing
+        """
+        self.view_mode = mode
+        self.current_module_name = module_name
+        
+        if mode == "full_3d":
+            self.maximized_frame = None
+            
+            # Hide 2D slice frames
+            self.axial_frame.hide()
+            self.coronal_frame.hide()
+            self.sagittal_frame.hide()
+            
+            # Reposition mesh_frame to occupy entire 2x2 grid (0, 0, 2, 2)
+            self.grid_layout.removeWidget(self.mesh_frame)
+            self.grid_layout.addWidget(self.mesh_frame, 0, 0, 2, 2)
+            self.mesh_frame.show()
+            
+            # Hide 3D slice plane buttons on hidden slice frames
+            self.set_3d_plane_buttons_visible(False)
+            self.mesh_max_btn.setVisible(False)
+            self.template_cb.setVisible(True)
+            
+            # Update title
+            disp = f"3D View — {module_name}" if module_name else "3D View"
+            self.mesh_title_lbl.setText(disp)
+            
+            # If template checkbox was checked, refresh overlay for this module
+            if self.template_cb.isChecked():
+                self.update_template_overlay()
+                
+            self.mesh_renderer.ResetCamera()
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            
+        else: # quad mode
+            self.maximized_frame = None
+            
+            # Move mesh_frame back to cell (0, 1)
+            self.grid_layout.removeWidget(self.mesh_frame)
+            self.grid_layout.addWidget(self.mesh_frame, 0, 1, 1, 1)
+            
+            # Show 2D slice frames
+            self.axial_frame.show()
+            self.coronal_frame.show()
+            self.sagittal_frame.show()
+            self.mesh_frame.setVisible(self.mesh_view_enabled)
+            
+            self.mesh_title_lbl.setText("3D Mesh View")
+            self.mesh_max_btn.setVisible(True)
+            self.template_cb.setVisible(False)
+            
+            # Remove template actor in quad mode unless requested
+            if self.template_actor is not None:
+                self.mesh_renderer.RemoveActor(self.template_actor)
+                self.template_actor = None
+                
+            if self.mesh_view_enabled:
+                self.set_3d_plane_buttons_visible(True)
+                
+            self.update_legend()
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+
+    def get_template_path(self, side=None):
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        templates_dir = os.path.join(project_root, "Templates")
+        
+        if side is None:
+            if self.current_mesh_path:
+                bn = os.path.basename(self.current_mesh_path).lower()
+                side = "right" if ("rh" in bn or "right" in bn) else "left"
+            elif self.current_side_filter == "rh":
+                side = "right"
+            else:
+                side = "left"
+        else:
+            side = "right" if ("rh" in side.lower() or "right" in side.lower()) else "left"
+            
+        is_spharm = ("spharm" in self.current_module_name.lower()) or (
+            self.current_mesh_path and "spharm" in self.current_mesh_path.lower()
+        )
+        
+        if is_spharm:
+            cand = os.path.join(templates_dir, "SPHARM", f"template_spharm_{side}.vtk")
+        else:
+            cand = os.path.join(templates_dir, "ICP", f"template_mean_{side}.vtk")
+            
+        if os.path.isfile(cand):
+            return cand, side, ("SPHARM" if is_spharm else "ICP")
+        return None, side, ("SPHARM" if is_spharm else "ICP")
+
+    def on_template_cb_toggled(self, checked: bool):
+        self.signal_template_toggled.emit(checked)
+        self.update_template_overlay()
+
+    def set_template_visible(self, visible: bool):
+        self.template_cb.blockSignals(True)
+        self.template_cb.setChecked(visible)
+        self.template_cb.blockSignals(False)
+        self.update_template_overlay()
+
+    def update_template_overlay(self):
+        if not self.template_cb.isChecked():
+            if self.template_actor is not None:
+                self.mesh_renderer.RemoveActor(self.template_actor)
+                self.template_actor = None
+                self.update_legend()
+                self.mesh_vtkWidget.GetRenderWindow().Render()
+                self.signal_log_message.emit("Reference template hidden.")
+            return
+
+        tmpl_path, side, mod_type = self.get_template_path()
+        if not tmpl_path:
+            self.signal_log_message.emit(f"[WARNING] Reference template not found for {side} ({mod_type}).")
+            return
+
+        # If an existing template actor is present, remove it first
+        if self.template_actor is not None:
+            self.mesh_renderer.RemoveActor(self.template_actor)
+            self.template_actor = None
+
+        if tmpl_path.endswith(".ply"):
+            reader = vtk.vtkPLYReader()
+        else:
+            reader = vtk.vtkPolyDataReader()
+        reader.SetFileName(tmpl_path)
+        reader.Update()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(reader.GetOutputPort())
+        mapper.ScalarVisibilityOff()
+
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        
+        # Warm Amber / Gold translucent ghost surface
+        prop = actor.GetProperty()
+        prop.SetColor(0.95, 0.76, 0.20)
+        prop.SetOpacity(0.42)
+        prop.SetSpecular(0.3)
+        prop.SetSpecularPower(20)
+        prop.SetInterpolationToPhong()
+
+        self.template_actor = actor
+        self.mesh_renderer.AddActor(self.template_actor)
+        self.mesh_renderer.ResetCamera()
+        self.update_legend(tmpl_name=f"{mod_type} {side.capitalize()} Mean")
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+        self.signal_log_message.emit(f"[INFO] Reference template overlaid: {os.path.basename(tmpl_path)} ({side.upper()})")
+
+    def update_legend(self, tmpl_name=None):
+        parts = []
+        if self.current_mesh_path:
+            m_name = os.path.basename(self.current_mesh_path)
+            if len(m_name) > 36:
+                m_name = m_name[:16] + "..." + m_name[-16:]
+            parts.append(f'<span style="color: #79c0ff; font-weight: bold;">&#9679; Patient: {m_name}</span>')
+            
+        if self.template_cb.isChecked() and self.template_actor is not None:
+            if not tmpl_name:
+                _, side, mod_type = self.get_template_path()
+                tmpl_name = f"{mod_type} {side.capitalize()} Mean"
+            parts.append(f'<span style="color: #f1c40f; font-weight: bold;">&#9679; Template: {tmpl_name} (Ghost)</span>')
+            
+        if parts:
+            self.mesh_legend_lbl.setText("  |  ".join(parts))
+            self.mesh_legend_lbl.setVisible(True)
+        else:
+            self.mesh_legend_lbl.setText("")
+            self.mesh_legend_lbl.setVisible(False)
+
     def set_mesh_view_visible(self, visible):
         self.mesh_view_enabled = visible
-        if self.maximized_frame is None:
+        if self.view_mode != "full_3d" and self.maximized_frame is None:
             self.mesh_frame.setVisible(visible)
 
     def toggle_maximize(self, frame):
+        if self.view_mode == "full_3d":
+            # Already full view in full_3d mode
+            return
+
         frames = [self.axial_frame, self.coronal_frame, self.sagittal_frame, self.mesh_frame]
         
         if self.maximized_frame is None:
@@ -425,21 +647,30 @@ class VtkViewer(QWidget):
                 if self.sagittal_3d_actor.GetVisibility():
                     self.mesh_vtkWidget.GetRenderWindow().Render()
 
-    def display_mesh(self, filepath):
-        if not (filepath.endswith(".nii.gz") or filepath.endswith(".mgz") or filepath.endswith(".vtk")):
-            self.signal_log_message.emit("[ERROR] Unsupported mesh format. Expected .vtk, .nii.gz, or .mgz")
+    def display_mesh(self, filepath, side_filter="all"):
+        if not (filepath.endswith(".nii.gz") or filepath.endswith(".mgz") or filepath.endswith(".vtk") or filepath.endswith(".ply")):
+            self.signal_log_message.emit("[ERROR] Unsupported mesh format. Expected .vtk, .ply, .nii.gz, or .mgz")
             return
             
-        self.set_mesh_view_visible(True)
-        self.set_3d_plane_buttons_visible(True)
+        self.current_mesh_path = filepath
+        self.current_side_filter = side_filter
+
+        if self.view_mode != "full_3d":
+            self.set_mesh_view_visible(True)
+            self.set_3d_plane_buttons_visible(True)
+        else:
+            self.set_3d_plane_buttons_visible(False)
         
-        # Clear existing mesh actor only (preserve 3D slice plane actors)
+        # Clear existing mesh actor only (preserve 3D slice plane actors and template actor)
         if self.mesh_actor is not None:
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
         
-        if filepath.endswith(".vtk"):
-            reader = vtk.vtkPolyDataReader()
+        if filepath.endswith(".vtk") or filepath.endswith(".ply"):
+            if filepath.endswith(".ply"):
+                reader = vtk.vtkPLYReader()
+            else:
+                reader = vtk.vtkPolyDataReader()
             reader.SetFileName(filepath)
             reader.Update()
             
@@ -449,17 +680,34 @@ class VtkViewer(QWidget):
             
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
-            actor.GetProperty().SetColor(0.72, 0.82, 0.93)
+
+            # Soft tint based on hemisphere
+            bn = os.path.basename(filepath).lower()
+            if "rh" in bn or "right" in bn:
+                actor.GetProperty().SetColor(0.95, 0.65, 0.55) # Soft Coral
+            elif "lh" in bn or "left" in bn:
+                actor.GetProperty().SetColor(0.55, 0.75, 0.95) # Soft Blue
+            else:
+                actor.GetProperty().SetColor(0.72, 0.82, 0.93) # Cyan
+                
+            actor.GetProperty().SetOpacity(1.0)
             actor.GetProperty().SetSpecular(0.25)
             actor.GetProperty().SetSpecularPower(15)
+            actor.GetProperty().SetInterpolationToPhong()
             
             self.mesh_actor = actor
             self.mesh_renderer.AddActor(self.mesh_actor)
+            
+            # If template overlay is enabled, refresh it to align with this mesh's side
+            if self.template_cb.isChecked():
+                self.update_template_overlay()
+                
             self.mesh_renderer.ResetCamera()
+            self.update_legend()
             self.mesh_vtkWidget.GetRenderWindow().Render()
             return
 
-        # Load NIFTI mask
+        # Load NIFTI mask (FastSurfer)
         reader = vtk.vtkNIFTIImageReader()
         reader.SetFileName(filepath)
         reader.Update()
@@ -489,10 +737,12 @@ class VtkViewer(QWidget):
         actor.GetProperty().SetColor(0.7, 0.7, 0.7)
         actor.GetProperty().SetSpecular(0.2)
         actor.GetProperty().SetSpecularPower(15)
+        actor.GetProperty().SetInterpolationToPhong()
         
         self.mesh_actor = actor
         self.mesh_renderer.AddActor(self.mesh_actor)
         self.mesh_renderer.ResetCamera()
+        self.update_legend()
         self.mesh_vtkWidget.GetRenderWindow().Render()
 
     def reset_camera(self):

@@ -83,6 +83,11 @@ class SpharmWorker(QThread):
             if self.adv_params.get("regen_only", False):
                 cmd.append("--regen_spharm_only")
 
+            # Check for standard reference template in Templates/SPHARM
+            tmpl_cand = os.path.join(project_root, "Templates", "SPHARM", f"template_spharm_{side_name.lower()}.vtk")
+            if os.path.isfile(tmpl_cand):
+                cmd.extend(["--reference_template", tmpl_cand])
+
             try:
                 kwargs = {}
                 if os.name == 'nt':
@@ -149,6 +154,7 @@ class SpharmWorker(QThread):
 class SpharmPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_template_toggled = pyqtSignal(bool)
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -168,8 +174,8 @@ class SpharmPanel(QWidget):
         help_label.setStyleSheet("color: #555; font-size: 11px;")
         spharm_layout.addWidget(help_label)
         
-        # 1. Directory Location Group
-        dir_group = QGroupBox("ICP Inputs && SPHARM Output Location")
+        # 1. Directory Configuration (Mesh / ICP Import & Dedicated output_SPHARM)
+        dir_group = QGroupBox("Directory Configuration (Mesh Import & Output)")
         dir_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
@@ -187,16 +193,23 @@ class SpharmPanel(QWidget):
             }
         """)
         dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(10, 20, 10, 10)
+        dir_layout.setContentsMargins(10, 16, 10, 10)
         dir_layout.setSpacing(6)
 
-        dir_row = QHBoxLayout()
-        self.spharm_dir_input = QLineEdit()
-        self.spharm_dir_input.setPlaceholderText("Auto (output_dir/spharm)")
-        dir_row.addWidget(self.spharm_dir_input)
+        # Row A: Input ICP Aligned Meshes
+        in_lbl = QLabel("📥 Input ICP Aligned Meshes (output_ICP or Custom ICP Folder):")
+        in_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
+        dir_layout.addWidget(in_lbl)
 
-        browse_dir_btn = QPushButton("📁 Browse")
-        browse_dir_btn.setStyleSheet("""
+        in_row = QHBoxLayout()
+        self.mesh_input_dir = QLineEdit()
+        self.mesh_input_dir.setPlaceholderText("Auto (.../output_ICP from pipeline) or Browse to import ICP folder...")
+        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
+        in_row.addWidget(self.mesh_input_dir)
+
+        browse_in_btn = QPushButton("📁 Browse...")
+        browse_in_btn.setToolTip("Import existing ICP output folder from disk (must contain aligned meshes)")
+        browse_in_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
@@ -211,15 +224,67 @@ class SpharmPanel(QWidget):
                 border: 1px solid #b2bec3;
                 color: #1a252f;
             }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
+        """)
+        browse_in_btn.clicked.connect(self.browse_input_directory)
+        in_row.addWidget(browse_in_btn)
+
+        reset_in_btn = QPushButton("🔄 Pipeline")
+        reset_in_btn.setToolTip("Reset input back to current pipeline output_ICP")
+        reset_in_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
         """)
-        browse_dir_btn.clicked.connect(self.browse_output_directory)
-        dir_row.addWidget(browse_dir_btn)
+        reset_in_btn.clicked.connect(self.reset_to_pipeline_input)
+        in_row.addWidget(reset_in_btn)
+
+        dir_layout.addLayout(in_row)
+
+        # Row B: Output Directory (Dedicated output_SPHARM)
+        out_lbl = QLabel("📤 Output Directory (Dedicated output_SPHARM):")
+        out_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50; margin-top: 4px;")
+        dir_layout.addWidget(out_lbl)
+
+        out_row = QHBoxLayout()
+        self.spharm_dir_input = QLineEdit()
+        self.spharm_dir_input.setPlaceholderText("Auto (.../output_SPHARM)")
+        self.spharm_dir_input.textChanged.connect(self.populate_results_table)
+        out_row.addWidget(self.spharm_dir_input)
+
+        browse_out_btn = QPushButton("📁 Browse...")
+        browse_out_btn.setToolTip("Select custom destination for output_SPHARM")
+        browse_out_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+        """)
+        browse_out_btn.clicked.connect(self.browse_output_directory)
+        out_row.addWidget(browse_out_btn)
 
         reload_btn = QPushButton("🔄 Reload")
+        reload_btn.setToolTip("Scan output_SPHARM folder and reload results table")
         reload_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -235,15 +300,11 @@ class SpharmPanel(QWidget):
                 border: 1px solid #b2bec3;
                 color: #1a252f;
             }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
         """)
         reload_btn.clicked.connect(self.populate_results_table)
-        dir_row.addWidget(reload_btn)
+        out_row.addWidget(reload_btn)
 
-        dir_layout.addLayout(dir_row)
+        dir_layout.addLayout(out_row)
         spharm_layout.addWidget(dir_group)
 
         # 2. Side Selection
@@ -411,8 +472,30 @@ class SpharmPanel(QWidget):
             }
         """)
         res_layout = QVBoxLayout(res_group)
-        res_layout.setContentsMargins(10, 20, 10, 10)
+        res_layout.setContentsMargins(10, 16, 10, 10)
         res_layout.setSpacing(6)
+
+        # Reference template overlay toggle checkbox
+        template_bar = QHBoxLayout()
+        template_bar.setContentsMargins(0, 0, 0, 2)
+        self.template_cb = QCheckBox("Show Reference Template (Overlay in 3D)")
+        self.template_cb.setToolTip("Overlay standard reference template (mean shape) in 3D view")
+        self.template_cb.setStyleSheet("""
+            QCheckBox {
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #f39c12;
+                border: 1px solid #d68910;
+            }
+        """)
+        self.template_cb.toggled.connect(self.signal_template_toggled.emit)
+        template_bar.addWidget(self.template_cb)
+        template_bar.addStretch()
+        res_layout.addLayout(template_bar)
 
         self.tab_bar = QTabBar()
         self.tab_bar.addTab("All")
@@ -508,37 +591,166 @@ class SpharmPanel(QWidget):
             self.spharm_subdiv_spin.setEnabled(True)
             self.spharm_degree_spin.setEnabled(True)
 
+    def browse_input_directory(self):
+        initial = self.mesh_input_dir.text().strip() or ("D:/" if os.path.exists("D:/") else "C:/")
+        folder = QFileDialog.getExistingDirectory(self, "Select Mesh Folder (FastSurfer or ICP Output)", initial)
+        if folder:
+            self.mesh_input_dir.setText(folder)
+            self.spharm_dir_input.setText(self.get_default_output_dir(folder))
+            self.update_run_button_state()
+            self.populate_results_table()
+
+    def reset_to_pipeline_input(self):
+        self.mesh_input_dir.clear()
+        self.spharm_dir_input.setText(self.get_default_output_dir())
+        self.update_run_button_state()
+        self.populate_results_table()
+        self.signal_log_message.emit("[INFO] Reset SPHARM input to default pipeline output.")
+
+    def on_input_dir_changed(self, text):
+        if text.strip() and os.path.isdir(text.strip()):
+            self.spharm_dir_input.setText(self.get_default_output_dir(text.strip()))
+        elif not text.strip():
+            self.spharm_dir_input.setText(self.get_default_output_dir())
+        self.update_run_button_state()
+        self.populate_results_table()
+
     def browse_output_directory(self):
-        initial = "D:/" if os.path.exists("D:/") else "C:/"
-        folder = QFileDialog.getExistingDirectory(self, "Select SPHARM Output Directory", initial)
+        initial = self.spharm_dir_input.text().strip() or ("D:/" if os.path.exists("D:/") else "C:/")
+        folder = QFileDialog.getExistingDirectory(self, "Select SPHARM Output Directory (output_SPHARM)", initial)
         if folder:
             self.spharm_dir_input.setText(folder)
             self.populate_results_table()
             self.update_run_button_state()
 
-    def get_source_paths(self):
-        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
-        if not out_base or not os.path.isdir(out_base):
-            return None, None, None
+    def resolve_input_folders(self):
+        """
+        Resolves Left and Right input folders for SPHARM.
+        CRITICAL: SPHARM cannot skip ICP. It MUST use meshes that have passed ICP alignment.
+        Candidates:
+        1. Custom input folder (must contain aligned_nifti or *_aligned.nii.gz).
+        2. Pipeline output_ICP (output_ICP/left/aligned_nifti, output_ICP/right/aligned_nifti).
+        3. Legacy pipeline icp folder (icp/left/aligned_nifti, icp/right/aligned_nifti).
+        Returns: (lh_dir, rh_dir, base_folder, source_type_str)
+        """
+        custom_input = self.mesh_input_dir.text().strip()
+        candidates = []
+        if custom_input and os.path.isdir(custom_input):
+            candidates.append(custom_input)
             
-        lh_in = os.path.join(out_base, "icp", "left", "aligned_nifti")
-        rh_in = os.path.join(out_base, "icp", "right", "aligned_nifti")
-        spharm_out = os.path.join(out_base, "spharm")
-        return lh_in, rh_in, spharm_out
+        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_base and os.path.isdir(out_base):
+            candidates.append(os.path.join(out_base, "output_ICP"))
+            candidates.append(os.path.join(out_base, "icp"))
+
+        for base in candidates:
+            # Check 0: If base itself is named aligned_nifti
+            base_name = os.path.basename(base.rstrip(r'\/')).lower()
+            parent = os.path.dirname(base.rstrip(r'\/'))
+            if base_name == "aligned_nifti":
+                grandparent = os.path.dirname(parent)
+                if os.path.basename(parent).lower() in ("left", "lh"):
+                    r_cand = os.path.join(grandparent, "right", "aligned_nifti")
+                    if os.path.isdir(r_cand) and glob.glob(os.path.join(r_cand, "*.nii*")):
+                        return base, r_cand, grandparent, "ICP Aligned"
+                    return base, None, grandparent, "ICP Left Only"
+                elif os.path.basename(parent).lower() in ("right", "rh"):
+                    l_cand = os.path.join(grandparent, "left", "aligned_nifti")
+                    if os.path.isdir(l_cand) and glob.glob(os.path.join(l_cand, "*.nii*")):
+                        return l_cand, base, grandparent, "ICP Aligned"
+                    return None, base, grandparent, "ICP Right Only"
+
+            # Check 1: Standard output_ICP structure (left/aligned_nifti and right/aligned_nifti)
+            lh_icp = os.path.join(base, "left", "aligned_nifti")
+            rh_icp = os.path.join(base, "right", "aligned_nifti")
+            if (os.path.isdir(lh_icp) and glob.glob(os.path.join(lh_icp, "*.nii*"))) or \
+               (os.path.isdir(rh_icp) and glob.glob(os.path.join(rh_icp, "*.nii*"))):
+                return lh_icp, rh_icp, base, "ICP Aligned"
+
+            # Check 2: Direct left and right folders containing aligned_nifti or *_aligned.nii.gz
+            lh_lr = os.path.join(base, "left")
+            rh_lr = os.path.join(base, "right")
+            if os.path.isdir(lh_lr) or os.path.isdir(rh_lr):
+                lh_target = os.path.join(lh_lr, "aligned_nifti") if os.path.isdir(os.path.join(lh_lr, "aligned_nifti")) else lh_lr
+                rh_target = os.path.join(rh_lr, "aligned_nifti") if os.path.isdir(os.path.join(rh_lr, "aligned_nifti")) else rh_lr
+                lh_files = glob.glob(os.path.join(lh_target, "*.nii*"))
+                rh_files = glob.glob(os.path.join(rh_target, "*.nii*"))
+                # Require ICP alignment markers
+                is_icp = ("aligned" in lh_target.lower() or "aligned" in rh_target.lower() or
+                          "output_icp" in base.lower() or "icp" in base.lower() or
+                          any("aligned" in f.lower() for f in (lh_files + rh_files)))
+                if is_icp and (lh_files or rh_files):
+                    return lh_target, rh_target, base, "ICP Aligned"
+
+            # Check 3: Base folder directly contains *_aligned.nii.gz files
+            aligned_files = glob.glob(os.path.join(base, "*aligned*.nii*"))
+            if aligned_files:
+                lh_files = [f for f in aligned_files if os.path.basename(f).startswith("lh_") or "_lh" in os.path.basename(f).lower() or "left" in os.path.basename(f).lower()]
+                rh_files = [f for f in aligned_files if os.path.basename(f).startswith("rh_") or "_rh" in os.path.basename(f).lower() or "right" in os.path.basename(f).lower()]
+                if lh_files and rh_files:
+                    sub_lh = os.path.join(base, "left", "aligned_nifti")
+                    sub_rh = os.path.join(base, "right", "aligned_nifti")
+                    os.makedirs(sub_lh, exist_ok=True)
+                    os.makedirs(sub_rh, exist_ok=True)
+                    for f in lh_files:
+                        dst = os.path.join(sub_lh, os.path.basename(f))
+                        if not os.path.exists(dst):
+                            try: os.link(f, dst)
+                            except Exception:
+                                import shutil; shutil.copy2(f, dst)
+                    for f in rh_files:
+                        dst = os.path.join(sub_rh, os.path.basename(f))
+                        if not os.path.exists(dst):
+                            try: os.link(f, dst)
+                            except Exception:
+                                import shutil; shutil.copy2(f, dst)
+                    return sub_lh, sub_rh, base, "ICP Aligned"
+                elif lh_files:
+                    return base, None, os.path.dirname(base), "ICP Left Only"
+                elif rh_files:
+                    return None, base, os.path.dirname(base), "ICP Right Only"
+
+        return None, None, None, "None"
+
+    def get_default_output_dir(self, resolved_base=None):
+        custom_input = self.mesh_input_dir.text().strip()
+        if custom_input and os.path.isdir(custom_input):
+            p_dir = os.path.dirname(custom_input.rstrip(r'\/'))
+            if p_dir and os.path.isdir(p_dir):
+                return os.path.join(p_dir, "output_SPHARM")
+            return os.path.join(custom_input, "output_SPHARM")
+
+        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_base and os.path.isdir(out_base):
+            return os.path.join(out_base, "output_SPHARM")
+        elif resolved_base and os.path.isdir(resolved_base):
+            p_dir = os.path.dirname(resolved_base.rstrip(r'\/'))
+            if p_dir and os.path.isdir(p_dir):
+                return os.path.join(p_dir, "output_SPHARM")
+            return os.path.join(resolved_base, "output_SPHARM")
+        return "D:/output_SPHARM" if os.path.exists("D:/") else "C:/output_SPHARM"
+
+    def get_source_paths(self):
+        lh, rh, base, _ = self.resolve_input_folders()
+        out = self.get_default_output_dir(base)
+        return lh, rh, out
 
     def update_run_button_state(self):
-        lh_in, rh_in, spharm_out = self.get_source_paths()
+        lh_in, rh_in, resolved_base, src_type = self.resolve_input_folders()
         
-        has_lh = bool(lh_in and os.path.isdir(lh_in) and glob.glob(os.path.join(lh_in, "*.nii.gz")))
-        has_rh = bool(rh_in and os.path.isdir(rh_in) and glob.glob(os.path.join(rh_in, "*.nii.gz")))
+        has_lh = bool(lh_in and os.path.isdir(lh_in) and glob.glob(os.path.join(lh_in, "*.nii*")))
+        has_rh = bool(rh_in and os.path.isdir(rh_in) and glob.glob(os.path.join(rh_in, "*.nii*")))
         
+        default_out = self.get_default_output_dir(resolved_base)
         custom_dir = self.spharm_dir_input.text().strip()
-        if not custom_dir and spharm_out:
-            self.spharm_dir_input.setText(spharm_out)
+        if not custom_dir and default_out:
+            self.spharm_dir_input.setText(default_out)
             
+        target_out = custom_dir if custom_dir else default_out
+        
         if not has_lh and not has_rh:
             self.run_spharm_btn.setEnabled(False)
-            msg = "🔒 Locked: Aligned NIfTI masks from ICP (left/right aligned_nifti) not found. Please run ICP Registration first."
+            msg = "[LOCKED] SPHARM requires ICP-aligned meshes (output_ICP). Please run Groupwise ICP Registration first, or select an ICP output folder."
             self.run_spharm_btn.setToolTip(msg)
             self.spharm_status_hint.setText(msg)
             self.spharm_status_hint.setStyleSheet("""
@@ -553,10 +765,10 @@ class SpharmPanel(QWidget):
         else:
             self.run_spharm_btn.setEnabled(True)
             self.run_spharm_btn.setToolTip("Click to run Batch SPHARM Processing")
-            lh_count = len(glob.glob(os.path.join(lh_in, "*.nii.gz"))) if has_lh else 0
-            rh_count = len(glob.glob(os.path.join(rh_in, "*.nii.gz"))) if has_rh else 0
-            target_out = custom_dir if custom_dir else spharm_out
-            msg = f"✓ Ready: Detected {lh_count} Left & {rh_count} Right ICP aligned subjects. Output: {target_out}"
+            lh_count = len(glob.glob(os.path.join(lh_in, "*.nii*"))) if has_lh else 0
+            rh_count = len(glob.glob(os.path.join(rh_in, "*.nii*"))) if has_rh else 0
+            src_label = f"Custom: {src_type}" if self.mesh_input_dir.text().strip() else f"Pipeline: {src_type}"
+            msg = f"[OK] Ready ({src_label}): Detected {lh_count} Left & {rh_count} Right ICP-aligned subjects. Output: {target_out}"
             self.spharm_status_hint.setText(msg)
             self.spharm_status_hint.setStyleSheet("""
                 color: #1e8449; 
@@ -571,31 +783,37 @@ class SpharmPanel(QWidget):
         self.populate_results_table()
 
     def run_spharm_process(self):
-        lh_in, rh_in, default_spharm_out = self.get_source_paths()
-        target_base = self.spharm_dir_input.text().strip() or default_spharm_out
+        lh_in, rh_in, resolved_base, _ = self.resolve_input_folders()
+        target_base = self.spharm_dir_input.text().strip() or self.get_default_output_dir(resolved_base)
         
         if not target_base:
-            self.signal_log_message.emit("[ERROR] Output directory is missing. Please configure Output in Data Importer.")
+            self.signal_log_message.emit("[ERROR] Output directory is missing. Please configure Output Directory.")
             return
 
+        os.makedirs(target_base, exist_ok=True)
         tasks = []
         mode = self.side_btn_group.checkedId()
         
         # 0: Both, 1: Left only, 2: Right only
+        # Create output_SPHARM/left and output_SPHARM/right separately
         if mode in (0, 1):
             if lh_in and os.path.isdir(lh_in):
-                tasks.append(("left", lh_in, os.path.join(target_base, "left")))
+                out_left = os.path.join(target_base, "left")
+                os.makedirs(out_left, exist_ok=True)
+                tasks.append(("left", lh_in, out_left))
             else:
-                self.signal_log_message.emit("[WARNING] Left ICP aligned_nifti folder not found.")
+                self.signal_log_message.emit("[WARNING] Left hippocampus input folder not found.")
                 
         if mode in (0, 2):
             if rh_in and os.path.isdir(rh_in):
-                tasks.append(("right", rh_in, os.path.join(target_base, "right")))
+                out_right = os.path.join(target_base, "right")
+                os.makedirs(out_right, exist_ok=True)
+                tasks.append(("right", rh_in, out_right))
             else:
-                self.signal_log_message.emit("[WARNING] Right ICP aligned_nifti folder not found.")
+                self.signal_log_message.emit("[WARNING] Right hippocampus input folder not found.")
 
         if not tasks:
-            self.signal_log_message.emit("[ERROR] No valid ICP aligned folders found to run SPHARM.")
+            self.signal_log_message.emit("[ERROR] No valid hippocampus folders found to run SPHARM.")
             return
 
         adv_params = {
@@ -607,7 +825,7 @@ class SpharmPanel(QWidget):
 
         self.run_spharm_btn.setEnabled(False)
         self.results_table.setRowCount(0)
-        self.signal_log_message.emit(">>> Initiating Batch SPHARM-PDM Pipeline...")
+        self.signal_log_message.emit(f">>> Initiating Batch SPHARM-PDM Pipeline (Output: {target_base})...")
 
         self.worker = SpharmWorker(tasks, adv_params)
         self.worker.signal_log.connect(self.signal_log_message.emit)
@@ -631,6 +849,11 @@ class SpharmPanel(QWidget):
             self.current_side_filter = "all"
         self.update_table_display()
 
+    def set_template_visible(self, visible: bool):
+        self.template_cb.blockSignals(True)
+        self.template_cb.setChecked(visible)
+        self.template_cb.blockSignals(False)
+
     def populate_results_table(self):
         target_base = self.spharm_dir_input.text().strip()
         if not target_base:
@@ -643,12 +866,20 @@ class SpharmPanel(QWidget):
                 (os.path.join(target_base, "left", "spharm_results"), "lh", "Left (LH)"),
                 (os.path.join(target_base, "right", "spharm_results"), "rh", "Right (RH)"),
                 (os.path.join(target_base, "spharm_results"), "all", "SPHARM"),
+                (os.path.join(target_base, "output_left_hippocampus", "spharm_results_left"), "lh", "Left (LH)"),
+                (os.path.join(target_base, "output_right_hippocampus", "spharm_results_right"), "rh", "Right (RH)"),
+                (os.path.join(target_base, "split_data", "ALL_Left"), "lh", "Left (LH)"),
+                (os.path.join(target_base, "split_data", "ALL_Right"), "rh", "Right (RH)"),
+                (os.path.join(target_base, "left"), "lh", "Left (LH)"),
+                (os.path.join(target_base, "right"), "rh", "Right (RH)"),
+                (target_base, "all", "SPHARM"),
             ]
             
             seen = set()
             for directory, side_key, side_label in search_dirs:
                 if os.path.isdir(directory):
-                    for vtk_file in glob.glob(os.path.join(directory, "*_SPHARM*.vtk")):
+                    mesh_files = glob.glob(os.path.join(directory, "*_SPHARM*.vtk")) + glob.glob(os.path.join(directory, "*.vtk"))
+                    for vtk_file in mesh_files:
                         norm_p = os.path.normpath(vtk_file)
                         if norm_p not in seen:
                             seen.add(norm_p)
