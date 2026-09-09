@@ -6,6 +6,36 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLineEdit, QCheckBox, QGroupBox, QMenu, QMessageBox)
 from PyQt6.QtCore import pyqtSignal, Qt, QPoint
 
+class ToggleTableWidget(QTableWidget):
+    """QTableWidget supporting ExtendedSelection (Ctrl/Shift multi-select)
+    and single-click toggle/deselect when clicking an already selected sole row."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None:
+                row = item.row()
+                modifiers = event.modifiers()
+                has_ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                has_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+                selected_rows = list(set(it.row() for it in self.selectedItems()))
+
+                if not has_ctrl and not has_shift:
+                    if selected_rows == [row]:
+                        self.clearSelection()
+                        return
+                    elif row in selected_rows and len(selected_rows) > 1:
+                        self.clearSelection()
+                        self.selectRow(row)
+                        return
+
+        super().mousePressEvent(event)
+
 class ImportPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
@@ -188,11 +218,9 @@ class ImportPanel(QWidget):
         subj_layout = QVBoxLayout(subj_group)
         subj_layout.setContentsMargins(10, 20, 10, 10)
         subj_layout.setSpacing(10)
-        self.subjects_table = QTableWidget(0, 1)
+        self.subjects_table = ToggleTableWidget(0, 1)
         self.subjects_table.setHorizontalHeaderLabels(["Subject name"])
         self.subjects_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.subjects_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.subjects_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.subjects_table.itemSelectionChanged.connect(self.on_subject_selection_changed)
         subj_layout.addWidget(self.subjects_table)
         

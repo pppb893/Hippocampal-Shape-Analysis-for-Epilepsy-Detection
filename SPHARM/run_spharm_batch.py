@@ -52,14 +52,14 @@ def cleanup_subject_files(output_base_dir, basename):
 def run_cli_checked(module, params, step_name, log_file):
     cli_node = slicer.cli.run(module, None, params, wait_for_completion=True)
     status = cli_node.GetStatusString()
+    err = (cli_node.GetErrorText() or "").strip()
+    out = (cli_node.GetOutputText() or "").strip()
+    if err:
+        sprint(f"    [{step_name}] stderr: {err[:600]}", log_file)
     if status not in ("Completed", "Completed with errors"):
         sprint(f"    !!! CLI '{step_name}' status = {status}", log_file)
-        err = cli_node.GetErrorText() or ""
-        out = cli_node.GetOutputText() or ""
-        if err.strip():
-            sprint(f"    stderr: {err.strip()[:1000]}", log_file)
-        if out.strip():
-            sprint(f"    stdout: {out.strip()[:1000]}", log_file)
+        if out:
+            sprint(f"    [{step_name}] stdout: {out[:600]}", log_file)
         return False
     return True
 
@@ -153,34 +153,48 @@ def find_label_files(input_dir, log_file):
 
 def resolve_reference_template(args, file_list, output_base_dir, log_file):
     reference_template = args.reference_template
-    template_basename = None
 
     if not reference_template and file_list:
-        first_basename = os.path.basename(file_list[0]).split('.')[0]
-        for suffix in ("_SPHARM_ellalign.vtk", "_SPHARM.vtk"):
-            candidate = os.path.join(output_base_dir, f"{first_basename}{suffix}").replace("\\", "/")
-            if os.path.exists(candidate):
-                reference_template = candidate
-                template_basename = first_basename
-                sprint(f"\nAuto-picked reference template: {os.path.basename(reference_template)}", log_file)
+        # Check if side can be deduced from input files or path
+        side = None
+        for f in file_list:
+            fname = os.path.basename(f).lower()
+            if fname.startswith("lh_") or "left" in fname:
+                side = "left"
                 break
-        if not reference_template:
-            sprint(f"\nNo existing SPHARM output for first subject — will process it without template first.", log_file)
+            elif fname.startswith("rh_") or "right" in fname:
+                side = "right"
+                break
+        if not side:
+            base_lower = output_base_dir.lower()
+            if "left" in base_lower or "lh" in base_lower:
+                side = "left"
+            elif "right" in base_lower or "rh" in base_lower:
+                side = "right"
+
+        if side:
+            repo_root = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+            cand = os.path.join(repo_root, "Templates", "SPHARM", f"template_spharm_{side}.vtk").replace("\\", "/")
+            cand_coef = cand.replace(".vtk", ".coef")
+            if os.path.isfile(cand) and os.path.isfile(cand_coef):
+                reference_template = cand
+                sprint(f"\nAuto-detected official template for [{side.upper()}]: {os.path.basename(reference_template)}", log_file)
 
     if reference_template:
         reference_template = reference_template.replace("\\", "/")
-        if template_basename is None:
-            tmpl_fname = os.path.basename(reference_template)
-            for suf in ("_SPHARM_ellalign.vtk", "_SPHARM.vtk"):
-                if tmpl_fname.endswith(suf):
-                    template_basename = tmpl_fname[: -len(suf)]
-                    break
-        sprint(f"Using regTemplate + flipTemplate = {reference_template}", log_file)
-        sprint(f"Template subject basename: {template_basename}", log_file)
+        ref_coef = reference_template.replace(".vtk", ".coef")
+        if not os.path.isfile(ref_coef):
+            sprint(f"\n[ERROR] reference_template '{os.path.basename(reference_template)}' missing matching .coef file ('{os.path.basename(ref_coef)}').", log_file)
+            reference_template = None
+        else:
+            sprint(f"Using reference template: {reference_template}", log_file)
+            sprint(f"Using reference coef:     {ref_coef}", log_file)
+    else:
+        sprint(f"\n[INFO] No reference template specified or found. Proceeding without template registration.", log_file)
 
-    return reference_template, template_basename
+    return reference_template
 
-def process_single_subject(file_path, index, total_files, output_base_dir, args, config, template_info, log_file):
+def process_single_subject(file_path, index, total_files, output_base_dir, args, config, reference_template, log_file):
     file_path = os.path.normpath(file_path).replace("\\", "/")
     basename = os.path.basename(file_path).split('.')[0]
     sprint(f"\n>>> [{index+1}/{total_files}] STARTING: {basename}", log_file)
@@ -189,8 +203,6 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
     para_mesh_path = os.path.join(output_base_dir, f"{basename}_para.vtk").replace("\\", "/")
     surf_mesh_path = os.path.join(output_base_dir, f"{basename}_surf.vtk").replace("\\", "/")
     spharm_base = os.path.join(output_base_dir, basename).replace("\\", "/")
-
-    reference_template, template_basename = template_info
 
     regen_mode = (args.regenerate_spharm_only
                   and os.path.exists(para_mesh_path)
@@ -211,9 +223,6 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
     para_node = None
     surf_node = None
 
-    new_template = None
-    new_tmpl_basename = None
-
     try:
         if regen_mode:
             sprint(f"  - REGEN MODE: reusing _para.vtk + _surf.vtk", log_file)
@@ -221,13 +230,13 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
             surf_node = slicer.util.loadModel(surf_mesh_path)
             if not node_has_points(para_node) or not node_has_points(surf_node):
                 sprint(f"  - !!! Failed to load _para/_surf — skipping", log_file)
-                return template_info
+                return False
         else:
             sprint(f"  - Loading volume...", log_file)
             input_node = slicer.util.loadLabelVolume(file_path)
             if not input_node:
                 sprint(f"  - FAILED to load: {file_path}", log_file)
-                return template_info
+                return False
 
             sprint(f"  - STEP 0: Improving label quality (fill holes + close + largest comp)...", log_file)
             improve_label_quality(input_node, log_file)
@@ -236,7 +245,7 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
             pp_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", f"{basename}_pp")
             pp_params = {'fileName': input_node.GetID(), 'outfileName': pp_node.GetID(), 'label': 1}
             if not run_cli_checked(slicer.modules.segpostprocessclp, pp_params, "SegPostProcess", log_file):
-                return template_info
+                return False
             slicer.util.saveNode(pp_node, pp_mask_path)
 
             sprint(f"  - STEP 2: GenParaMesh (Creating spherical mesh)...", log_file)
@@ -250,10 +259,10 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
                 'label': 1
             }
             if not run_cli_checked(slicer.modules.genparameshclp, para_params, "GenParaMesh", log_file):
-                return template_info
+                return False
             if not node_has_points(para_node) or not node_has_points(surf_node):
                 sprint(f"  - !!! GenParaMesh returned EMPTY mesh — skipping", log_file)
-                return template_info
+                return False
             slicer.util.saveNode(para_node, para_mesh_path)
             slicer.util.saveNode(surf_node, surf_mesh_path)
 
@@ -268,26 +277,29 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
 
         own_spharm_path = f"{spharm_base}_SPHARM.vtk"
         own_ellalign_path = f"{spharm_base}_SPHARM_ellalign.vtk"
-        is_template_subject = (template_basename is not None and basename == template_basename)
 
-        if reference_template and not is_template_subject:
+        if reference_template:
             spharm_params['regTemplateFile'] = reference_template
             spharm_params['regTemplateFileOn'] = True
-            spharm_params['flipTemplateFile'] = reference_template.replace(".vtk", ".coef")
-            spharm_params['flipTemplateFileOn'] = True
             spharm_params['regTemplate'] = reference_template
-            spharm_params['flipTemplate'] = reference_template.replace(".vtk", ".coef")
-            spharm_params['flipTemplateOn'] = True
-            sprint(f"    Using template alignment -> will produce _SPHARM_procalign.vtk", log_file)
-        elif is_template_subject:
-            sprint(f"    (Template subject — no self-reference)", log_file)
+            ref_coef = reference_template.replace(".vtk", ".coef")
+            if os.path.isfile(ref_coef):
+                spharm_params['flipTemplateFile'] = ref_coef
+                spharm_params['flipTemplateFileOn'] = True
+                spharm_params['flipTemplate'] = ref_coef
+                spharm_params['flipTemplateOn'] = True
+                sprint(f"    Using official template alignment ({os.path.basename(reference_template)}) -> will produce _SPHARM_procalign.vtk", log_file)
+            else:
+                spharm_params['flipTemplateFileOn'] = False
+                spharm_params['flipTemplateOn'] = False
+                sprint(f"    Using template alignment (no flipTemplate) -> will produce _SPHARM_procalign.vtk", log_file)
 
         run_cli_checked(slicer.modules.paratospharmmeshclp, spharm_params, "ParaToSPHARMMesh", log_file)
 
         if not (os.path.exists(own_spharm_path) and os.path.exists(own_spharm_path.replace(".vtk", ".coef"))):
             sprint(f"  - ERROR: SPHARM outputs not found for {basename}", log_file)
             cleanup_subject_files(output_base_dir, basename)
-            return template_info
+            return False
 
         try:
             reader = vtk.vtkPolyDataReader()
@@ -297,23 +309,9 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
             if poly is None or poly.GetNumberOfPoints() < 10 or poly.GetNumberOfCells() == 0:
                 sprint(f"  - ERROR: Invalid/Corrupted SPHARM output (0 cells / NaN) for {basename}", log_file)
                 cleanup_subject_files(output_base_dir, basename)
-                return template_info
+                return False
         except Exception:
             pass
-
-        if is_template_subject and os.path.exists(own_ellalign_path):
-            own_procalign_path = f"{spharm_base}_SPHARM_procalign.vtk"
-            import shutil
-            try:
-                shutil.copy2(own_ellalign_path, own_procalign_path)
-                sprint(f"    Copied template's ellalign -> procalign for pipeline uniformity", log_file)
-            except Exception as e:
-                sprint(f"    WARN: failed to copy ellalign->procalign: {e}", log_file)
-
-        if not reference_template and os.path.exists(own_ellalign_path):
-            new_template = own_ellalign_path
-            new_tmpl_basename = basename
-            sprint(f"    Set as reference template for remaining subjects: {os.path.basename(own_ellalign_path)}", log_file)
 
         final_vtk = f"{spharm_base}_SPHARM.vtk"
         final_coef = f"{spharm_base}_SPHARM.coef"
@@ -359,9 +357,7 @@ def process_single_subject(file_path, index, total_files, output_base_dir, args,
                 except Exception: pass
         sprint(f"  - Cleanup done.", log_file)
 
-    if new_template:
-        return (new_template, new_tmpl_basename)
-    return template_info
+    return True
 
 def run_batch_spharm():
     args = parse_args()
@@ -383,12 +379,12 @@ def run_batch_spharm():
 
     log_file = init_logging(output_base_dir, input_dir, output_root, MODE_TAG, NUM_ITER, SUBDIV, DEGREE)
     file_list = find_label_files(input_dir, log_file)
-    template_info = resolve_reference_template(args, file_list, output_base_dir, log_file)
+    reference_template = resolve_reference_template(args, file_list, output_base_dir, log_file)
 
     config = {'num_iter': NUM_ITER, 'subdiv': SUBDIV, 'degree': DEGREE}
 
     for i, file_path in enumerate(file_list):
-        template_info = process_single_subject(file_path, i, len(file_list), output_base_dir, args, config, template_info, log_file)
+        process_single_subject(file_path, i, len(file_list), output_base_dir, args, config, reference_template, log_file)
 
     sprint("\n" + "="*60, log_file)
     sprint("!!! ALL BATCH PROCESSING COMPLETED !!!", log_file)

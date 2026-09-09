@@ -206,6 +206,9 @@ class MainWindow(QMainWindow):
         self.right_panel.signal_log_message.connect(self.log)
         self.left_panel.signal_template_toggled.connect(self.right_panel.viewer.set_template_visible)
         self.right_panel.signal_template_toggled.connect(self.left_panel.set_template_visible)
+        self.left_panel.signal_overlay_all_toggled.connect(self.on_overlay_all_toggled)
+        self.right_panel.signal_overlay_toggled.connect(self.left_panel.set_overlay_visible)
+        self.left_panel.signal_side_changed.connect(self.right_panel.set_side_filter)
         self.module_combo.currentTextChanged.connect(self.on_module_changed)
 
         # Set initial view mode based on current module selection
@@ -259,7 +262,7 @@ class MainWindow(QMainWindow):
 
         toolbar.addWidget(QLabel("  Modules: "))
         self.module_combo = QComboBox()
-        self.module_combo.addItems(["Data Importer", "FastSurfer Segmentation", "ICP Registration", "SPHARM Processing", "PLS-DA Analysis", "Feature Extraction"])
+        self.module_combo.addItems(["Data Importer", "FastSurfer Segmentation", "ICP Registration", "SPHARM Processing"])
         self.module_combo.setMinimumWidth(200)
         toolbar.addWidget(self.module_combo)
 
@@ -375,10 +378,22 @@ class MainWindow(QMainWindow):
             sb = self.log_window.verticalScrollBar()
             sb.setValue(sb.maximum())
 
+    def on_overlay_all_toggled(self, enabled: bool, filepaths: list, side_filter: str):
+        self.right_panel.set_overlay_visible(enabled)
+        if enabled:
+            self.right_panel.display_all_meshes(filepaths, side_filter)
+        else:
+            self.right_panel.viewer.clear_multi_mesh_actors()
+            self.right_panel.viewer.update_legend()
+            self.right_panel.viewer.mesh_vtkWidget.GetRenderWindow().Render()
+
     def on_module_changed(self, module_name):
         index = self.module_combo.findText(module_name)
         self.left_panel.switch_module(index)
         
+        # Clear previous module's patient meshes from 3D view so they do not mix
+        self.right_panel.viewer.clear_all_patient_meshes()
+
         if module_name in ("ICP Registration", "SPHARM Processing"):
             self.right_panel.set_view_mode("full_3d", module_name)
         elif module_name == "FastSurfer Segmentation":
@@ -387,3 +402,13 @@ class MainWindow(QMainWindow):
         else:
             self.right_panel.set_view_mode("quad", module_name)
             self.right_panel.viewer.set_mesh_view_visible(False)
+
+        # Sync state with newly active module panel
+        active_panel = self.left_panel.get_current_module_panel()
+        if hasattr(active_panel, 'overlay_cb'):
+            is_overlay = active_panel.overlay_cb.isChecked()
+            self.right_panel.set_overlay_visible(is_overlay)
+            if is_overlay:
+                active_panel.emit_overlay_meshes()
+        if hasattr(active_panel, 'current_side_filter'):
+            self.right_panel.set_side_filter(active_panel.current_side_filter)

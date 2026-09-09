@@ -172,6 +172,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--spharm_dir", default=None,
                         help="Path to spharm_results folder")
+    parser.add_argument("--template", default=None,
+                        help="Path to official reference template VTK")
     args, _ = parser.parse_known_args()
 
     folder = args.spharm_dir
@@ -195,11 +197,15 @@ def main():
             except Exception as e:
                 print(f"  Failed to delete {os.path.basename(f)}: {e}")
 
-    all_spharm = sorted(glob.glob(os.path.join(folder, "*_SPHARM.vtk")))
-    candidate_files = [f for f in all_spharm
-                       if not any(s in os.path.basename(f)
-                                  for s in ("_ellalign", "_grid", "_realigned", "_procalign"))]
-    source = "_SPHARM.vtk"
+    candidate_files = sorted(glob.glob(os.path.join(folder, "*_SPHARM_procalign.vtk")))
+    source = "_SPHARM_procalign.vtk"
+
+    if not candidate_files:
+        all_spharm = sorted(glob.glob(os.path.join(folder, "*_SPHARM.vtk")))
+        candidate_files = [f for f in all_spharm
+                           if not any(s in os.path.basename(f)
+                                      for s in ("_ellalign", "_grid", "_realigned", "_procalign"))]
+        source = "_SPHARM.vtk"
 
     if not candidate_files:
         candidate_files = sorted(glob.glob(os.path.join(folder, "*_SPHARM_ellalign.vtk")))
@@ -220,7 +226,7 @@ def main():
     for f in candidate_files:
         basename = os.path.basename(f)
         name = basename
-        for suffix in ("_SPHARM.vtk", "_SPHARM_ellalign.vtk"):
+        for suffix in ("_SPHARM_procalign.vtk", "_SPHARM_ellalign.vtk", "_SPHARM.vtk"):
             if name.endswith(suffix):
                 name = name[:-len(suffix)]
                 break
@@ -263,9 +269,46 @@ def main():
         print("[ERROR] No subjects to align.")
         return
 
+    # Resolve official template mesh instead of picking first subject
+    template_file = args.template
+    if not template_file:
+        folder_lower = os.path.abspath(folder).lower()
+        side = None
+        if "left" in folder_lower or "lh" in folder_lower:
+            side = "left"
+        elif "right" in folder_lower or "rh" in folder_lower:
+            side = "right"
+        else:
+            for s in subjects:
+                fname = os.path.basename(s["file"]).lower()
+                if fname.startswith("lh_") or "left" in fname:
+                    side = "left"
+                    break
+                elif fname.startswith("rh_") or "right" in fname:
+                    side = "right"
+                    break
+
+        if side:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            cand = os.path.abspath(os.path.join(script_dir, "..", "Templates", "SPHARM", f"template_spharm_{side}.vtk"))
+            if os.path.isfile(cand):
+                template_file = cand
+
+    if template_file and os.path.isfile(template_file):
+        print(f"Loading official reference template: {template_file}")
+        tmpl_poly = load_polydata(template_file)
+        ref_pts = points_to_numpy(tmpl_poly)
+    else:
+        print(f"[ERROR] Reference template not found! Please provide a valid template file.")
+        return
+
     h_idx, t_idx, y_idx, g_idx = 470, 276, 0, 272
-    print(f"Phase 1: Aligning reference template subject to canonical orientation...")
-    ref_pts = subjects[0]["pts"]
+    if ref_pts.shape[0] <= max(h_idx, t_idx, y_idx, g_idx):
+        print(f"[WARNING] SPHARM template mesh has {ref_pts.shape[0]} points (expected >= 1002 points for subdiv level 10).")
+        print("Skipping landmark realignment (meshes remain in their SPHARM-PDM coordinate system).")
+        return
+
+    print(f"Phase 1: Aligning official reference template to canonical orientation...")
     lm_ref = ref_pts[[h_idx, t_idx, y_idx, g_idx]]
     size_ref = float(np.linalg.norm(lm_ref - lm_ref.mean(axis=0), axis=1).mean())
     R_ref, t_ref = kabsch_proper(lm_ref, CANONICAL_4PTS * size_ref)
@@ -278,6 +321,14 @@ def main():
     final_landmarks = []
     for s in subjects:
         pts = s["pts"]
+        name = os.path.basename(s["file"])
+        for suf in ("_SPHARM_procalign.vtk", "_SPHARM_ellalign.vtk", "_SPHARM.vtk"):
+            name = name.replace(suf, "")
+
+        if pts.shape[0] != ref_pts.shape[0]:
+            print(f"  SKIP: {name} (point count {pts.shape[0]} != template {ref_pts.shape[0]})")
+            continue
+
         R, t = kabsch_proper(pts, aligned_ref_pts)
         new_pts = (R @ pts.T).T + t
 
@@ -301,19 +352,21 @@ def main():
             name = name.replace(suf, "")
         print(f"  {name:<46} {residual:>10.5f}")
 
-    final_landmarks = np.array(final_landmarks)
-
-    print()
-    print("=" * 72)
-    print(f"Done. Re-aligned {len(subjects)} subjects using 4-point anatomical alignment.")
-    print(f"\nLandmark clustering quality after realignment:")
-    for k, name in enumerate(["HEAD (RED)", "TAIL (BLUE)", "LAT (GREEN)", "MED (YELLOW)"]):
-        cluster_pts = final_landmarks[:, k, :]
-        spread = float(np.linalg.norm(cluster_pts - cluster_pts.mean(axis=0),
-                                      axis=1).mean())
-        print(f"    {name}: mean distance from cluster center = {spread:.4f}")
-    print(f"\nOutput saved as *_SPHARM_realigned.vtk in {folder}")
-    print("=" * 72)
+    if len(final_landmarks) > 0:
+        final_landmarks = np.array(final_landmarks)
+        print()
+        print("=" * 72)
+        print(f"Done. Re-aligned {len(final_landmarks)} subjects using 4-point anatomical alignment.")
+        print(f"\nLandmark clustering quality after realignment:")
+        for k, name in enumerate(["HEAD (RED)", "TAIL (BLUE)", "LAT (GREEN)", "MED (YELLOW)"]):
+            cluster_pts = final_landmarks[:, k, :]
+            spread = float(np.linalg.norm(cluster_pts - cluster_pts.mean(axis=0),
+                                          axis=1).mean())
+            print(f"    {name}: mean distance from cluster center = {spread:.4f}")
+        print(f"\nOutput saved as *_SPHARM_realigned.vtk in {folder}")
+        print("=" * 72)
+    else:
+        print(f"\nNo subjects were realigned (check point counts / subdivision levels).")
 
 if __name__ == "__main__":
     main()

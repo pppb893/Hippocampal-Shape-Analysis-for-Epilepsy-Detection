@@ -5,8 +5,6 @@ from .import_panel import ImportPanel
 from .fastsurfer_panel import FastsurferPanel
 from .icp_panel import IcpPanel
 from .spharm_panel import SpharmPanel
-from .plsda_panel import PlsdaPanel
-from .feature_panel import FeaturePanel
 
 class AdaptiveStackedWidget(QStackedWidget):
     def sizeHint(self):
@@ -20,8 +18,10 @@ class AdaptiveStackedWidget(QStackedWidget):
 class LeftPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
-    signal_mesh_selected = pyqtSignal(str, str)
+    signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_template_toggled = pyqtSignal(bool)
+    signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, filepaths, side_filter
+    signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,19 +51,15 @@ class LeftPanel(QWidget):
         self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.icp_panel = IcpPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.spharm_panel = SpharmPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
-        self.plsda_panel = PlsdaPanel(self.import_panel.get_folder)
-        self.feature_panel = FeaturePanel(self.import_panel.get_folder)
 
         # Add to stacked widget
         self.stacked_widget.addWidget(self.import_panel)
         self.stacked_widget.addWidget(self.fastsurfer_panel)
         self.stacked_widget.addWidget(self.icp_panel)
         self.stacked_widget.addWidget(self.spharm_panel)
-        self.stacked_widget.addWidget(self.plsda_panel)
-        self.stacked_widget.addWidget(self.feature_panel)
 
         # Connect signals
-        for panel in [self.import_panel, self.fastsurfer_panel, self.icp_panel, self.spharm_panel, self.plsda_panel, self.feature_panel]:
+        for panel in [self.import_panel, self.fastsurfer_panel, self.icp_panel, self.spharm_panel]:
             panel.signal_log_message.connect(self.signal_log_message)
             
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
@@ -90,9 +86,25 @@ class LeftPanel(QWidget):
         self.icp_panel.signal_template_toggled.connect(self.signal_template_toggled)
         self.spharm_panel.signal_template_toggled.connect(self.signal_template_toggled)
 
+        # Forward overlay all meshes toggle signals
+        self.icp_panel.signal_overlay_all_toggled.connect(self.signal_overlay_all_toggled)
+        self.spharm_panel.signal_overlay_all_toggled.connect(self.signal_overlay_all_toggled)
+
+        # Forward side filter changed signals
+        self.icp_panel.signal_side_changed.connect(self.signal_side_changed)
+        self.spharm_panel.signal_side_changed.connect(self.signal_side_changed)
+
     def set_template_visible(self, visible: bool):
         self.icp_panel.set_template_visible(visible)
         self.spharm_panel.set_template_visible(visible)
+
+    def set_overlay_visible(self, visible: bool):
+        active_widget = self.stacked_widget.currentWidget()
+        if hasattr(active_widget, 'set_overlay_visible'):
+            active_widget.set_overlay_visible(visible)
+
+    def get_current_module_panel(self):
+        return self.stacked_widget.currentWidget()
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)

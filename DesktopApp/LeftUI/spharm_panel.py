@@ -8,6 +8,36 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QCheckBo
                              QHeaderView, QTabBar, QRadioButton, QButtonGroup, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QLocale
 
+class ToggleTableWidget(QTableWidget):
+    """QTableWidget supporting ExtendedSelection (Ctrl/Shift multi-select)
+    and single-click toggle/deselect when clicking an already selected sole row."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None:
+                row = item.row()
+                modifiers = event.modifiers()
+                has_ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                has_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+                selected_rows = list(set(it.row() for it in self.selectedItems()))
+
+                if not has_ctrl and not has_shift:
+                    if selected_rows == [row]:
+                        self.clearSelection()
+                        return
+                    elif row in selected_rows and len(selected_rows) > 1:
+                        self.clearSelection()
+                        self.selectRow(row)
+                        return
+
+        super().mousePressEvent(event)
+
 def get_project_root():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -24,28 +54,24 @@ def find_slicer_salt_exe():
         os.path.join(root, "Prerequisites", "SlicerSALT", "SlicerSALT.exe"),
         os.path.join(root, "Prerequisites", "SlicerSALT 6.0.0", "SlicerSALT.exe"),
     ]
-    for cand in local_candidates:
-        if os.path.isfile(cand):
-            return cand
-            
-    candidates = glob.glob(r"C:\Program Files\SlicerSALT*\SlicerSALT.exe")
-    if candidates:
-        return candidates[0]
-    return "C:\\Program Files\\SlicerSALT 6.0.0\\SlicerSALT.exe"
+    for c in local_candidates:
+        if os.path.isfile(c):
+            return c
+    return None
 
-class SpharmWorker(QThread):
+class SPHARMWorker(QThread):
     signal_log = pyqtSignal(str)
     signal_finished = pyqtSignal(bool)
 
-    def __init__(self, tasks, adv_params, parent=None):
-        super().__init__(parent)
-        self.tasks = tasks  # list of tuples: (side_name, input_aligned_nii_dir, output_spharm_dir)
-        self.adv_params = adv_params
+    def __init__(self, tasks, adv_params=None):
+        super().__init__()
+        self.tasks = tasks # list of (side_name, in_dir, out_dir)
+        self.adv_params = adv_params or {}
 
     def run(self):
         slicer_exe = find_slicer_salt_exe()
-        if not os.path.isfile(slicer_exe):
-            self.signal_log.emit(f"[ERROR] SlicerSALT not found at: {slicer_exe}")
+        if not slicer_exe:
+            self.signal_log.emit("[ERROR] SlicerSALT.exe not found! Please check installation.")
             self.signal_finished.emit(False)
             return
 
@@ -62,9 +88,6 @@ class SpharmWorker(QThread):
         for side_name, in_dir, out_dir in self.tasks:
             self.signal_log.emit(f"\n==================================================")
             self.signal_log.emit(f">>> Running Batch SPHARM for [{side_name.upper()} Hippocampus]")
-            self.signal_log.emit(f"    Input:  {in_dir}")
-            self.signal_log.emit(f"    Output: {out_dir}")
-            self.signal_log.emit(f"==================================================")
             
             os.makedirs(out_dir, exist_ok=True)
             
@@ -78,72 +101,67 @@ class SpharmWorker(QThread):
                 "--output_dir", out_dir,
                 "--num_iterations", str(self.adv_params.get("num_iter", 1000)),
                 "--subdiv_level", str(self.adv_params.get("subdiv", 10)),
-                "--spharm_degree", str(self.adv_params.get("degree", 12))
+                "--spharm_degree", str(self.adv_params.get("deg", 12))
             ]
-            if self.adv_params.get("regen_only", False):
-                cmd.append("--regen_spharm_only")
+            
+            # Use official template from Templates/SPHARM if present
+            tmpl_file = os.path.join(project_root, "Templates", "SPHARM", f"template_spharm_{side_name.lower()}.vtk")
+            coef_file = os.path.join(project_root, "Templates", "SPHARM", f"template_spharm_{side_name.lower()}.coef")
+            if os.path.isfile(tmpl_file) and os.path.isfile(coef_file):
+                cmd.extend(["--reference_template", tmpl_file])
+                self.signal_log.emit(f"    Using Reference Template: {os.path.basename(tmpl_file)} and {os.path.basename(coef_file)}")
+            else:
+                self.signal_log.emit(f"    [INFO] Official template for {side_name} not found or incomplete (need both .vtk and .coef). Proceeding without --reference_template.")
 
-            # Check for standard reference template in Templates/SPHARM
-            tmpl_cand = os.path.join(project_root, "Templates", "SPHARM", f"template_spharm_{side_name.lower()}.vtk")
-            if os.path.isfile(tmpl_cand):
-                cmd.extend(["--reference_template", tmpl_cand])
-
+            self.signal_log.emit(f"Executing: {' '.join(cmd)}")
             try:
-                kwargs = {}
-                if os.name == 'nt':
-                    kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                    
-                process = subprocess.Popen(
+                proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True,
-                    **kwargs
+                    universal_newlines=True,
+                    bufsize=1,
+                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
                 )
+                for line in proc.stdout:
+                    self.signal_log.emit(line.strip())
+                proc.wait()
                 
-                for line in process.stdout:
-                    clean = line.strip()
-                    if clean:
-                        self.signal_log.emit(clean)
-                process.wait()
-                
-                spharm_results_dir = os.path.join(out_dir, "spharm_results")
-                has_vtk = os.path.isdir(spharm_results_dir) and len(glob.glob(os.path.join(spharm_results_dir, "*_SPHARM*.vtk"))) > 0
-                
-                if not has_vtk:
-                    self.signal_log.emit(f"[WARNING] SPHARM step for {side_name} did not generate expected VTK meshes.")
+                if proc.returncode != 0:
+                    self.signal_log.emit(f"[ERROR] SPHARM batch failed for {side_name} with return code {proc.returncode}")
                     overall_success = False
                     continue
-
-                self.signal_log.emit(f"[OK] SPHARM surface meshes generated for {side_name}.")
-
-                # Step 2: Anatomical Re-alignment (Head/Tail orientation)
+                else:
+                    self.signal_log.emit(f"[SUCCESS] SPHARM processing completed for {side_name}.")
+                    
+                # Step 2: Post-process Procrustes Re-alignment (Self-alignment against cohort mean)
                 if os.path.isfile(realign_script):
-                    self.signal_log.emit(f">>> Re-aligning anatomical landmarks for {side_name}...")
+                    self.signal_log.emit(f">>> Running Procrustes Re-alignment for [{side_name.upper()}]...")
                     realign_cmd = [
                         sys.executable,
                         realign_script,
-                        "--spharm_dir", spharm_results_dir
+                        "--spharm_dir", out_dir,
+                        "--tolerance", str(self.adv_params.get("tol", 0.0001)),
+                        "--max_iterations", str(self.adv_params.get("max_iter", 50))
                     ]
-                    realign_proc = subprocess.Popen(
+                    # Pass official template as fixed target if available
+                    if os.path.isfile(tmpl_file):
+                        realign_cmd.extend(["--target_template", tmpl_file])
+                        self.signal_log.emit(f"    Aligning cohort to official template: {os.path.basename(tmpl_file)}")
+                        
+                    re_proc = subprocess.Popen(
                         realign_cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
-                        text=True,
-                        **kwargs
+                        universal_newlines=True,
+                        bufsize=1,
+                        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
                     )
-                    for rline in realign_proc.stdout:
-                        rclean = rline.strip()
-                        if rclean:
-                            self.signal_log.emit(f"  [realign] {rclean}")
-                    realign_proc.wait()
-                    if realign_proc.returncode == 0:
-                        self.signal_log.emit(f"[OK] SPHARM Re-alignment completed for {side_name}.")
-                    else:
-                        self.signal_log.emit(f"[WARNING] SPHARM Re-alignment finished with non-zero exit code: {realign_proc.returncode}")
-                else:
-                    self.signal_log.emit(f"[INFO] realign_spharm.py not found, skipping landmark realignment.")
-
+                    for line in re_proc.stdout:
+                        self.signal_log.emit(line.strip())
+                    re_proc.wait()
+                    self.signal_log.emit(f"[SUCCESS] Procrustes Re-alignment finished for {side_name}.")
+                    
             except Exception as e:
                 self.signal_log.emit(f"[ERROR] Exception running SPHARM {side_name}: {str(e)}")
                 overall_success = False
@@ -153,8 +171,10 @@ class SpharmWorker(QThread):
 
 class SpharmPanel(QWidget):
     signal_log_message = pyqtSignal(str)
-    signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_template_toggled = pyqtSignal(bool)
+    signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, file_list, side_filter
+    signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -162,6 +182,7 @@ class SpharmPanel(QWidget):
         self.get_output_folder = get_output_folder_func
         self.all_files = []
         self.current_side_filter = "all"
+        self.last_selected_row = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -475,10 +496,11 @@ class SpharmPanel(QWidget):
         res_layout.setContentsMargins(10, 16, 10, 10)
         res_layout.setSpacing(6)
 
-        # Reference template overlay toggle checkbox
+        # Reference template overlay toggle checkbox and Overlay All Meshes checkbox
         template_bar = QHBoxLayout()
         template_bar.setContentsMargins(0, 0, 0, 2)
-        self.template_cb = QCheckBox("Show Reference Template (Overlay in 3D)")
+        template_bar.setSpacing(12)
+        self.template_cb = QCheckBox("Show Reference Template")
         self.template_cb.setToolTip("Overlay standard reference template (mean shape) in 3D view")
         self.template_cb.setStyleSheet("""
             QCheckBox {
@@ -494,6 +516,24 @@ class SpharmPanel(QWidget):
         """)
         self.template_cb.toggled.connect(self.signal_template_toggled.emit)
         template_bar.addWidget(self.template_cb)
+
+        self.overlay_cb = QCheckBox("Overlay All Meshes")
+        self.overlay_cb.setToolTip("Superimpose and view all SPHARM meshes together in 3D view")
+        self.overlay_cb.setStyleSheet("""
+            QCheckBox {
+                color: #16a085;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #1abc9c;
+                border: 1px solid #16a085;
+            }
+        """)
+        self.overlay_cb.toggled.connect(self.on_overlay_cb_toggled)
+        template_bar.addWidget(self.overlay_cb)
+
         template_bar.addStretch()
         res_layout.addLayout(template_bar)
 
@@ -528,13 +568,11 @@ class SpharmPanel(QWidget):
         self.tab_bar.currentChanged.connect(self.on_tab_changed)
         res_layout.addWidget(self.tab_bar)
 
-        self.results_table = QTableWidget(0, 3)
+        self.results_table = ToggleTableWidget(0, 3)
         self.results_table.setHorizontalHeaderLabels(["SPHARM Mesh Name", "Side", "File Path"])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.results_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -555,7 +593,6 @@ class SpharmPanel(QWidget):
             }
         """)
         self.results_table.itemSelectionChanged.connect(self.on_mesh_selected)
-        self.results_table.cellClicked.connect(self.on_cell_clicked)
         res_layout.addWidget(self.results_table)
 
         spharm_layout.addWidget(res_group)
@@ -847,12 +884,40 @@ class SpharmPanel(QWidget):
             self.current_side_filter = "rh"
         else:
             self.current_side_filter = "all"
+        self.signal_side_changed.emit(self.current_side_filter)
         self.update_table_display()
+        if self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
 
     def set_template_visible(self, visible: bool):
         self.template_cb.blockSignals(True)
         self.template_cb.setChecked(visible)
         self.template_cb.blockSignals(False)
+
+    def set_overlay_visible(self, visible: bool):
+        self.overlay_cb.blockSignals(True)
+        self.overlay_cb.setChecked(visible)
+        self.overlay_cb.blockSignals(False)
+        if visible:
+            self.emit_overlay_meshes()
+
+    def on_overlay_cb_toggled(self, checked: bool):
+        if checked:
+            self.emit_overlay_meshes()
+        else:
+            self.signal_overlay_all_toggled.emit(False, [], self.current_side_filter)
+
+    def get_current_display_files(self):
+        if self.current_side_filter == "lh":
+            return [f for f in self.all_files if f["side_key"] == "lh"]
+        elif self.current_side_filter == "rh":
+            return [f for f in self.all_files if f["side_key"] == "rh"]
+        return self.all_files
+
+    def emit_overlay_meshes(self):
+        display_files = self.get_current_display_files()
+        filepaths = [f["filepath"] for f in display_files]
+        self.signal_overlay_all_toggled.emit(True, filepaths, self.current_side_filter)
 
     def populate_results_table(self):
         target_base = self.spharm_dir_input.text().strip()
@@ -878,19 +943,52 @@ class SpharmPanel(QWidget):
             seen = set()
             for directory, side_key, side_label in search_dirs:
                 if os.path.isdir(directory):
-                    mesh_files = glob.glob(os.path.join(directory, "*_SPHARM*.vtk")) + glob.glob(os.path.join(directory, "*.vtk"))
-                    for vtk_file in mesh_files:
-                        norm_p = os.path.normpath(vtk_file)
+                    all_vtk = glob.glob(os.path.join(directory, "*.vtk"))
+                    # Group meshes by subject to pick the single best SPHARM surface mesh per subject
+                    subject_map = {}
+                    for vtk_file in all_vtk:
+                        bn = os.path.basename(vtk_file)
+                        bn_lower = bn.lower()
+                        # Filter out templates, mean shapes, and intermediate/auxiliary files
+                        if "mean_shape" in bn_lower or bn_lower.startswith("template_"):
+                            continue
+                        if any(aux in bn_lower for aux in ("_para.", "_surf.", "medialaxis", "_grid.")):
+                            continue
+
+                        # Extract base subject key
+                        s_key = bn
+                        for suf in ("_SPHARM_realigned.vtk", "_SPHARM_procalign.vtk", "_SPHARM_ellalign.vtk", "_SPHARM.vtk", ".vtk"):
+                            if s_key.endswith(suf):
+                                s_key = s_key[:-len(suf)]
+                                break
+
+                        if s_key not in subject_map:
+                            subject_map[s_key] = []
+                        subject_map[s_key].append(os.path.normpath(vtk_file))
+
+                    for s_key, f_list in sorted(subject_map.items()):
+                        # Priority: _realigned.vtk > _procalign.vtk > _ellalign.vtk > _SPHARM.vtk
+                        best_mesh = None
+                        for suf in ("_SPHARM_realigned.vtk", "_SPHARM_procalign.vtk", "_SPHARM_ellalign.vtk", "_SPHARM.vtk"):
+                            cand = [f for f in f_list if f.endswith(suf)]
+                            if cand:
+                                best_mesh = cand[0]
+                                break
+                        if not best_mesh and f_list:
+                            best_mesh = f_list[0]
+
+                        norm_p = best_mesh
                         if norm_p not in seen:
                             seen.add(norm_p)
                             basename = os.path.basename(norm_p)
-                            
+
                             cur_key = side_key
                             cur_label = side_label
+                            norm_lower = norm_p.lower()
                             if cur_key == "all":
-                                if basename.startswith("lh_") or "left" in norm_p.lower():
+                                if basename.startswith("lh_") or "left" in norm_lower or "_lh" in norm_lower or "\\left\\" in norm_lower or "/left/" in norm_lower:
                                     cur_key, cur_label = "lh", "Left (LH)"
-                                elif basename.startswith("rh_") or "right" in norm_p.lower():
+                                elif basename.startswith("rh_") or "right" in norm_lower or "_rh" in norm_lower or "\\right\\" in norm_lower or "/right/" in norm_lower:
                                     cur_key, cur_label = "rh", "Right (RH)"
 
                             self.all_files.append({
@@ -909,20 +1007,18 @@ class SpharmPanel(QWidget):
         self.tab_bar.setTabText(2, f"Right ({rh_count})")
 
         self.update_table_display()
+        if self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
 
     def update_table_display(self):
-        if self.current_side_filter == "lh":
-            display_files = [f for f in self.all_files if f["side_key"] == "lh"]
-        elif self.current_side_filter == "rh":
-            display_files = [f for f in self.all_files if f["side_key"] == "rh"]
-        else:
-            display_files = self.all_files
+        display_files = self.get_current_display_files()
 
         self.results_table.blockSignals(True)
         self.results_table.setRowCount(len(display_files))
         for i, item in enumerate(display_files):
             name_item = QTableWidgetItem(item["filename"])
             name_item.setData(Qt.ItemDataRole.UserRole, item["filepath"])
+            name_item.setData(Qt.ItemDataRole.UserRole + 1, item["side_key"])
             self.results_table.setItem(i, 0, name_item)
 
             side_item = QTableWidgetItem(item["side"])
@@ -940,16 +1036,33 @@ class SpharmPanel(QWidget):
         self.results_table.blockSignals(False)
         self.results_table.clearSelection()
 
-    def on_cell_clicked(self, row, col):
-        self.results_table.selectRow(row)
-        self.on_mesh_selected()
-
     def on_mesh_selected(self):
         selected_items = self.results_table.selectedItems()
-        if selected_items:
-            row = selected_items[0].row()
+        selected_rows = sorted(list(set(it.row() for it in selected_items)))
+
+        if not selected_rows:
+            # 0 items selected -> clear 3D mesh
+            self.signal_mesh_selected.emit("", self.current_side_filter)
+            return
+
+        if len(selected_rows) == 1:
+            row = selected_rows[0]
             name_item = self.results_table.item(row, 0)
             if name_item:
                 filepath = name_item.data(Qt.ItemDataRole.UserRole)
+                side_key = name_item.data(Qt.ItemDataRole.UserRole + 1) or self.current_side_filter
                 if filepath:
-                    self.signal_mesh_selected.emit(filepath, self.current_side_filter)
+                    self.signal_mesh_selected.emit(filepath, side_key)
+            return
+
+        # Multi-select (> 1 meshes selected via Ctrl / Shift)
+        filepaths = []
+        for row in selected_rows:
+            name_item = self.results_table.item(row, 0)
+            if name_item:
+                fp = name_item.data(Qt.ItemDataRole.UserRole)
+                if fp:
+                    filepaths.append(fp)
+
+        if filepaths:
+            self.signal_mesh_selected.emit(filepaths, self.current_side_filter)

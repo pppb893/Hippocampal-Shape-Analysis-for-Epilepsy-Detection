@@ -8,6 +8,36 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QCheckBo
                              QHeaderView, QTabBar, QRadioButton, QButtonGroup, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QLocale
 
+class ToggleTableWidget(QTableWidget):
+    """QTableWidget supporting ExtendedSelection (Ctrl/Shift multi-select)
+    and single-click toggle/deselect when clicking an already selected sole row."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None:
+                row = item.row()
+                modifiers = event.modifiers()
+                has_ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                has_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+                selected_rows = list(set(it.row() for it in self.selectedItems()))
+
+                if not has_ctrl and not has_shift:
+                    if selected_rows == [row]:
+                        self.clearSelection()
+                        return
+                    elif row in selected_rows and len(selected_rows) > 1:
+                        self.clearSelection()
+                        self.selectRow(row)
+                        return
+
+        super().mousePressEvent(event)
+
 def get_project_root():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -33,7 +63,7 @@ def find_slicer_salt_exe():
         return candidates[0]
     return "C:\\Program Files\\SlicerSALT 6.0.0\\SlicerSALT.exe"
 
-class IcpWorker(QThread):
+class ICPWorker(QThread):
     signal_log = pyqtSignal(str)
     signal_finished = pyqtSignal(bool)
 
@@ -43,23 +73,18 @@ class IcpWorker(QThread):
         self.adv_params = adv_params
 
     def run(self):
-        slicer_exe = find_slicer_salt_exe()
-        if not os.path.isfile(slicer_exe):
-            self.signal_log.emit(f"[ERROR] SlicerSALT not found at: {slicer_exe}")
-            self.signal_finished.emit(False)
-            return
-
         project_root = get_project_root()
         icp_script = os.path.join(project_root, "ICP", "ICP.py")
+
         if not os.path.isfile(icp_script):
-            self.signal_log.emit(f"[ERROR] ICP.py script not found at: {icp_script}")
+            self.signal_log.emit(f"[ERROR] ICP.py not found at: {icp_script}")
             self.signal_finished.emit(False)
             return
 
         overall_success = True
         for side_name, in_dir, out_dir in self.tasks:
             self.signal_log.emit(f"\n==================================================")
-            self.signal_log.emit(f">>> Running ICP Registration for [{side_name.upper()} Hippocampus]")
+            self.signal_log.emit(f">>> Running Batch ICP for [{side_name.upper()} Hippocampus]")
             self.signal_log.emit(f"    Input:  {in_dir}")
             self.signal_log.emit(f"    Output: {out_dir}")
             self.signal_log.emit(f"==================================================")
@@ -67,22 +92,28 @@ class IcpWorker(QThread):
             os.makedirs(out_dir, exist_ok=True)
             
             cmd = [
-                slicer_exe,
-                "--no-main-window",
-                "--no-splash",
-                "--python-script", icp_script,
+                sys.executable,
+                icp_script,
                 "--input_dir", in_dir,
                 "--output_dir", out_dir,
                 "--output_spacing", str(self.adv_params.get("spacing", 0.02)),
                 "--output_voxels", str(self.adv_params.get("voxels", 128)),
                 "--max_iterations", str(self.adv_params.get("max_iter", 20)),
-                "--tolerance", str(self.adv_params.get("tolerance", 0.00005)),
-                "--pairwise_iterations", str(self.adv_params.get("pw_iter", 100)),
+                "--tolerance", str(self.adv_params.get("tol", 0.00005)),
+                "--pairwise_max_iterations", str(self.adv_params.get("pw_iter", 100)),
                 "--pairwise_tolerance", str(self.adv_params.get("pw_tol", 0.0001)),
                 "--pairwise_landmarks", str(self.adv_params.get("pw_landmarks", 200)),
-                "--interpolation", str(self.adv_params.get("interp", "NearestNeighbor"))
+                "--interp_type", str(self.adv_params.get("interp", "NearestNeighbor"))
             ]
-            
+
+            # Check for standard reference template in Templates/ICP
+            tmpl_cand = os.path.join(project_root, "Templates", "ICP", f"template_mean_{side_name.lower()}.vtk")
+            if not os.path.isfile(tmpl_cand):
+                tmpl_cand = os.path.join(project_root, "Templates", "ICP", f"template_mean_{side_name.lower()}.ply")
+            if os.path.isfile(tmpl_cand):
+                cmd.extend(["--reference_template", tmpl_cand])
+                self.signal_log.emit(f"    Using Reference Template: {os.path.basename(tmpl_cand)}")
+
             try:
                 kwargs = {}
                 if os.name == 'nt':
@@ -100,20 +131,13 @@ class IcpWorker(QThread):
                     clean = line.strip()
                     if clean:
                         self.signal_log.emit(clean)
-                        
                 process.wait()
                 
-                # Verify outputs
-                aligned_nii_dir = os.path.join(out_dir, "aligned_nifti")
-                aligned_mesh_dir = os.path.join(out_dir, "aligned_meshes")
-                has_nii = os.path.isdir(aligned_nii_dir) and len(os.listdir(aligned_nii_dir)) > 0
-                has_mesh = os.path.isdir(aligned_mesh_dir) and len(os.listdir(aligned_mesh_dir)) > 0
-                
-                if has_nii or has_mesh:
-                    self.signal_log.emit(f"[OK] ICP {side_name} completed successfully.")
-                else:
-                    self.signal_log.emit(f"[WARNING] ICP {side_name} finished without expected output files.")
+                if process.returncode != 0:
+                    self.signal_log.emit(f"[ERROR] ICP process failed for {side_name} with return code {process.returncode}")
                     overall_success = False
+                else:
+                    self.signal_log.emit(f"[OK] ICP completed successfully for {side_name}.")
             except Exception as e:
                 self.signal_log.emit(f"[ERROR] Exception running ICP {side_name}: {str(e)}")
                 overall_success = False
@@ -123,8 +147,10 @@ class IcpWorker(QThread):
 
 class IcpPanel(QWidget):
     signal_log_message = pyqtSignal(str)
-    signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_template_toggled = pyqtSignal(bool)
+    signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, file_list, side_filter
+    signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
     signal_icp_completed = pyqtSignal()
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
@@ -133,6 +159,7 @@ class IcpPanel(QWidget):
         self.get_output_folder = get_output_folder_func
         self.all_files = []
         self.current_side_filter = "all"
+        self.last_selected_row = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -477,10 +504,11 @@ class IcpPanel(QWidget):
         res_layout.setContentsMargins(10, 16, 10, 10)
         res_layout.setSpacing(6)
 
-        # Reference template overlay toggle checkbox
+        # Reference template overlay toggle checkbox and Overlay All Meshes checkbox
         template_bar = QHBoxLayout()
         template_bar.setContentsMargins(0, 0, 0, 2)
-        self.template_cb = QCheckBox("Show Reference Template (Overlay in 3D)")
+        template_bar.setSpacing(12)
+        self.template_cb = QCheckBox("Show Reference Template")
         self.template_cb.setToolTip("Overlay standard reference template (mean shape) in 3D view")
         self.template_cb.setStyleSheet("""
             QCheckBox {
@@ -496,6 +524,24 @@ class IcpPanel(QWidget):
         """)
         self.template_cb.toggled.connect(self.signal_template_toggled.emit)
         template_bar.addWidget(self.template_cb)
+
+        self.overlay_cb = QCheckBox("Overlay All Meshes")
+        self.overlay_cb.setToolTip("Superimpose and view all aligned meshes together in 3D view")
+        self.overlay_cb.setStyleSheet("""
+            QCheckBox {
+                color: #16a085;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #1abc9c;
+                border: 1px solid #16a085;
+            }
+        """)
+        self.overlay_cb.toggled.connect(self.on_overlay_cb_toggled)
+        template_bar.addWidget(self.overlay_cb)
+
         template_bar.addStretch()
         res_layout.addLayout(template_bar)
 
@@ -530,13 +576,11 @@ class IcpPanel(QWidget):
         self.tab_bar.currentChanged.connect(self.on_tab_changed)
         res_layout.addWidget(self.tab_bar)
 
-        self.results_table = QTableWidget(0, 3)
+        self.results_table = ToggleTableWidget(0, 3)
         self.results_table.setHorizontalHeaderLabels(["Aligned Mesh Name", "Side", "File Path"])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.results_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -557,7 +601,6 @@ class IcpPanel(QWidget):
             }
         """)
         self.results_table.itemSelectionChanged.connect(self.on_mesh_selected)
-        self.results_table.cellClicked.connect(self.on_cell_clicked)
         res_layout.addWidget(self.results_table)
 
         icp_layout.addWidget(res_group)
@@ -847,12 +890,85 @@ class IcpPanel(QWidget):
             self.current_side_filter = "rh"
         else:
             self.current_side_filter = "all"
+        self.signal_side_changed.emit(self.current_side_filter)
         self.update_table_display()
+        if self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
 
     def set_template_visible(self, visible: bool):
         self.template_cb.blockSignals(True)
         self.template_cb.setChecked(visible)
         self.template_cb.blockSignals(False)
+
+    def set_overlay_visible(self, visible: bool):
+        self.overlay_cb.blockSignals(True)
+        self.overlay_cb.setChecked(visible)
+        self.overlay_cb.blockSignals(False)
+        if visible:
+            self.emit_overlay_meshes()
+
+    def on_overlay_cb_toggled(self, checked: bool):
+        if checked:
+            self.emit_overlay_meshes()
+        else:
+            self.signal_overlay_all_toggled.emit(False, [], self.current_side_filter)
+
+    def get_current_display_files(self):
+        if self.current_side_filter == "lh":
+            return [f for f in self.all_files if f["side_key"] == "lh"]
+        elif self.current_side_filter == "rh":
+            return [f for f in self.all_files if f["side_key"] == "rh"]
+        return self.all_files
+
+    def emit_overlay_meshes(self):
+        display_files = self.get_current_display_files()
+        filepaths = [f["filepath"] for f in display_files]
+        self.signal_overlay_all_toggled.emit(True, filepaths, self.current_side_filter)
+
+    def auto_extract_aligned_meshes(self, target_base):
+        """Converts aligned_nifti/*.nii.gz to aligned_meshes/*.vtk if missing."""
+        if not target_base or not os.path.isdir(target_base):
+            return
+        import vtk
+        for side in ["left", "right"]:
+            nii_dir = os.path.join(target_base, side, "aligned_nifti")
+            out_mesh_dir = os.path.join(target_base, side, "aligned_meshes")
+            if os.path.isdir(nii_dir):
+                nii_files = glob.glob(os.path.join(nii_dir, "*.nii.gz"))
+                if nii_files:
+                    os.makedirs(out_mesh_dir, exist_ok=True)
+                    for nf in nii_files:
+                        bn = os.path.basename(nf)
+                        for ext in [".nii.gz", ".nii", ".mgz"]:
+                            if bn.endswith(ext):
+                                bn = bn[:-len(ext)]
+                                break
+                        vtk_p = os.path.join(out_mesh_dir, f"{bn}.vtk")
+                        if not os.path.isfile(vtk_p):
+                            try:
+                                r = vtk.vtkNIFTIImageReader()
+                                r.SetFileName(nf)
+                                r.Update()
+                                mc = vtk.vtkDiscreteMarchingCubes()
+                                mc.SetInputConnection(r.GetOutputPort())
+                                mc.GenerateValues(1, 1, 100)
+                                mc.Update()
+                                qmat = r.GetQFormMatrix()
+                                if not qmat:
+                                    qmat = r.GetSFormMatrix()
+                                t = vtk.vtkTransform()
+                                if qmat:
+                                    t.SetMatrix(qmat)
+                                tf = vtk.vtkTransformPolyDataFilter()
+                                tf.SetTransform(t)
+                                tf.SetInputConnection(mc.GetOutputPort())
+                                tf.Update()
+                                w = vtk.vtkPolyDataWriter()
+                                w.SetFileName(vtk_p)
+                                w.SetInputData(tf.GetOutput())
+                                w.Write()
+                            except Exception as e:
+                                print(f"[WARNING] Could not auto-convert {nf} to vtk: {e}")
 
     def populate_results_table(self):
         target_base = self.icp_dir_input.text().strip()
@@ -862,6 +978,9 @@ class IcpPanel(QWidget):
             
         self.all_files = []
         if target_base and os.path.isdir(target_base):
+            # Check and auto-generate missing aligned .vtk meshes from aligned_nifti
+            self.auto_extract_aligned_meshes(target_base)
+
             search_dirs = [
                 (os.path.join(target_base, "left", "aligned_meshes"), "lh", "Left (LH)"),
                 (os.path.join(target_base, "right", "aligned_meshes"), "rh", "Right (RH)"),
@@ -883,12 +1002,17 @@ class IcpPanel(QWidget):
                             seen.add(norm_p)
                             basename = os.path.basename(norm_p)
                             
+                            # Do NOT display reference templates / mean_shape in the results table
+                            if "mean_shape" in basename.lower() or basename.lower().startswith("template_"):
+                                continue
+
                             cur_key = side_key
                             cur_label = side_label
+                            norm_lower = norm_p.lower()
                             if cur_key == "all":
-                                if basename.startswith("lh_") or "left" in norm_p.lower():
+                                if basename.startswith("lh_") or "left" in norm_lower or "_lh" in norm_lower or "\\left\\" in norm_lower or "/left/" in norm_lower:
                                     cur_key, cur_label = "lh", "Left (LH)"
-                                elif basename.startswith("rh_") or "right" in norm_p.lower():
+                                elif basename.startswith("rh_") or "right" in norm_lower or "_rh" in norm_lower or "\\right\\" in norm_lower or "/right/" in norm_lower:
                                     cur_key, cur_label = "rh", "Right (RH)"
 
                             self.all_files.append({
@@ -907,20 +1031,18 @@ class IcpPanel(QWidget):
         self.tab_bar.setTabText(2, f"Right ({rh_count})")
 
         self.update_table_display()
+        if self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
 
     def update_table_display(self):
-        if self.current_side_filter == "lh":
-            display_files = [f for f in self.all_files if f["side_key"] == "lh"]
-        elif self.current_side_filter == "rh":
-            display_files = [f for f in self.all_files if f["side_key"] == "rh"]
-        else:
-            display_files = self.all_files
+        display_files = self.get_current_display_files()
 
         self.results_table.blockSignals(True)
         self.results_table.setRowCount(len(display_files))
         for i, item in enumerate(display_files):
             name_item = QTableWidgetItem(item["filename"])
             name_item.setData(Qt.ItemDataRole.UserRole, item["filepath"])
+            name_item.setData(Qt.ItemDataRole.UserRole + 1, item["side_key"])
             self.results_table.setItem(i, 0, name_item)
 
             side_item = QTableWidgetItem(item["side"])
@@ -938,16 +1060,31 @@ class IcpPanel(QWidget):
         self.results_table.blockSignals(False)
         self.results_table.clearSelection()
 
-    def on_cell_clicked(self, row, col):
-        self.results_table.selectRow(row)
-        self.on_mesh_selected()
-
     def on_mesh_selected(self):
-        selected_items = self.results_table.selectedItems()
-        if selected_items:
-            row = selected_items[0].row()
+        selected_rows = sorted(list(set(index.row() for index in self.results_table.selectedIndexes())))
+        if not selected_rows:
+            # 0 items selected -> clear 3D mesh
+            self.signal_mesh_selected.emit("", self.current_side_filter)
+            return
+
+        if len(selected_rows) == 1:
+            row = selected_rows[0]
             name_item = self.results_table.item(row, 0)
             if name_item:
                 filepath = name_item.data(Qt.ItemDataRole.UserRole)
+                side_key = name_item.data(Qt.ItemDataRole.UserRole + 1) or self.current_side_filter
                 if filepath:
-                    self.signal_mesh_selected.emit(filepath, self.current_side_filter)
+                    self.signal_mesh_selected.emit(filepath, side_key)
+            return
+
+        # Multi-select (> 1 meshes selected via Ctrl / Shift)
+        filepaths = []
+        for row in selected_rows:
+            name_item = self.results_table.item(row, 0)
+            if name_item:
+                fp = name_item.data(Qt.ItemDataRole.UserRole)
+                if fp:
+                    filepaths.append(fp)
+
+        if filepaths:
+            self.signal_mesh_selected.emit(filepaths, self.current_side_filter)

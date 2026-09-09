@@ -575,6 +575,22 @@ def step6_save_outputs(output_dir, file_list, aligned_meshes, T_matrices, gw_his
     writer.Write()
     sprint("  Saved mean_shape.ply")
 
+    # Save individual aligned meshes for each subject
+    aligned_mesh_dir = os.path.join(output_dir, "aligned_meshes")
+    os.makedirs(aligned_mesh_dir, exist_ok=True)
+    for i, orig_f in enumerate(file_list):
+        bn = os.path.basename(orig_f)
+        for ext in [".nii.gz", ".nii", ".mgz"]:
+            if bn.endswith(ext):
+                bn = bn[:-len(ext)]
+                break
+        mesh_out = os.path.join(aligned_mesh_dir, f"{bn}_aligned.vtk")
+        writer_m = vtk.vtkPolyDataWriter()
+        writer_m.SetFileName(mesh_out)
+        writer_m.SetInputData(aligned_meshes[i])
+        writer_m.Write()
+    sprint(f"  Saved {N} aligned meshes to: {aligned_mesh_dir}")
+
     export_aligned_nifti(file_list, T_matrices, output_dir,
                          spacing_mm=args.output_spacing,
                          n_voxels=args.output_voxels,

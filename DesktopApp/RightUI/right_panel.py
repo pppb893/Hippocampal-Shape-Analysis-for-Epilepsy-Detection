@@ -7,6 +7,7 @@ from .vtk_viewer import VtkViewer
 class RightPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_template_toggled = pyqtSignal(bool)
+    signal_overlay_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -22,15 +23,42 @@ class RightPanel(QWidget):
         
         self.viewer.signal_log_message.connect(self.signal_log_message)
         self.viewer.signal_template_toggled.connect(self.signal_template_toggled)
+        self.viewer.signal_overlay_toggled.connect(self.signal_overlay_toggled)
 
     def set_view_mode(self, mode: str, module_name: str = ""):
         self.viewer.set_view_mode(mode, module_name)
+
+    def set_overlay_visible(self, visible: bool):
+        self.viewer.set_overlay_visible(visible)
+
+    def set_side_filter(self, side_filter: str):
+        self.viewer.set_side_filter(side_filter)
+
+    def display_all_meshes(self, filepaths, side_filter="all"):
+        self.signal_log_message.emit(f"Superimposing {len(filepaths)} meshes in 3D View (Filter: {side_filter.upper()})")
+        self.viewer.display_all_meshes(filepaths, side_filter=side_filter)
 
     def display_subject(self, filepath):
         self.signal_log_message.emit(f"Displaying subject: {os.path.basename(filepath)}")
         self.viewer.display_subject(filepath)
 
     def display_mesh(self, filepath, side_filter="all"):
+        if isinstance(filepath, list):
+            if not filepath:
+                self.viewer.display_mesh("", side_filter=side_filter)
+                self.signal_log_message.emit("[INFO] Deselected all meshes from 3D view.")
+                return
+            elif len(filepath) == 1:
+                filepath = filepath[0]
+            else:
+                self.signal_log_message.emit(f"Displaying {len(filepath)} selected meshes in 3D View")
+                self.viewer.display_all_meshes(filepath, side_filter=side_filter)
+                return
+
+        if not filepath:
+            self.viewer.display_mesh("", side_filter=side_filter)
+            self.signal_log_message.emit("[INFO] Deselected mesh from 3D view.")
+            return
         self.signal_log_message.emit(f"Displaying 3D Mesh: {os.path.basename(filepath)}")
         self.viewer.display_mesh(filepath, side_filter=side_filter)
         

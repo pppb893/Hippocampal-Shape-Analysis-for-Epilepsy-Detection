@@ -45,6 +45,7 @@ class CustomQVTKWidget(QVTKRenderWindowInteractor):
 class VtkViewer(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_template_toggled = pyqtSignal(bool)
+    signal_overlay_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,6 +56,11 @@ class VtkViewer(QWidget):
         self.current_mesh_path = None
         self.current_side_filter = "all"
         self.template_actor = None
+        self.template_actors = []
+        self.mesh_actor = None
+        self.multi_mesh_actors = []
+        self.multi_mesh_paths = []
+        self.is_overlay_active = False
         self.setup_ui()
 
     def setup_ui(self):
@@ -154,6 +160,36 @@ class VtkViewer(QWidget):
         """)
         self.template_cb.toggled.connect(self.on_template_cb_toggled)
         self.template_cb.setVisible(False) # Hidden initially in quad mode, shown in full_3d mode
+
+        self.overlay_cb = QCheckBox("Overlay All Meshes")
+        self.overlay_cb.setToolTip("Superimpose and view all aligned meshes together in 3D")
+        self.overlay_cb.setStyleSheet("""
+            QCheckBox {
+                color: #1abc9c;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+                background: rgba(26, 188, 156, 0.12);
+                border: 1px solid #16a085;
+                border-radius: 4px;
+                padding: 3px 8px;
+            }
+            QCheckBox:hover {
+                background: rgba(26, 188, 156, 0.22);
+            }
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
+                border: 1px solid #16a085;
+                border-radius: 3px;
+                background: #1e2230;
+            }
+            QCheckBox::indicator:checked {
+                background: #1abc9c;
+            }
+        """)
+        self.overlay_cb.toggled.connect(self.on_overlay_cb_toggled)
+        self.overlay_cb.setVisible(False)
         
         self.mesh_max_btn = QPushButton("◻")
         self.mesh_max_btn.setFixedSize(24, 24)
@@ -164,6 +200,7 @@ class VtkViewer(QWidget):
         mesh_top_bar.addWidget(self.mesh_legend_lbl)
         mesh_top_bar.addStretch()
         mesh_top_bar.addWidget(self.template_cb)
+        mesh_top_bar.addWidget(self.overlay_cb)
         mesh_top_bar.addWidget(self.mesh_max_btn)
         
         layout_mesh.addLayout(mesh_top_bar)
@@ -405,14 +442,42 @@ class VtkViewer(QWidget):
         self.mesh_vtkWidget.GetRenderWindow().Render()
         self.signal_log_message.emit(f"3D Slice Plane ({orientation.capitalize()}) {'shown' if visible else 'hidden'} in 3D View.")
 
+    def clear_all_patient_meshes(self):
+        """Clears all patient meshes (single and multi-overlaid) from 3D viewport."""
+        if self.mesh_actor is not None:
+            self.mesh_renderer.RemoveActor(self.mesh_actor)
+            self.mesh_actor = None
+        self.clear_multi_mesh_actors()
+        self.current_mesh_path = None
+        self.is_overlay_active = False
+        self.overlay_cb.blockSignals(True)
+        self.overlay_cb.setChecked(False)
+        self.overlay_cb.blockSignals(False)
+        self.update_legend()
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+
     def set_view_mode(self, mode: str, module_name: str = ""):
         """
         Switches between:
         - 'quad': 4-view layout (Axial, Coronal, Sagittal + 3D) for Data Importer & FastSurfer
         - 'full_3d': Single large 3D viewport for ICP Registration & SPHARM Processing
         """
+        prev_module = self.current_module_name
         self.view_mode = mode
         self.current_module_name = module_name
+
+        # When switching module, always clear previous module's patient meshes
+        if prev_module and prev_module != module_name:
+            if self.mesh_actor is not None:
+                self.mesh_renderer.RemoveActor(self.mesh_actor)
+                self.mesh_actor = None
+            self.clear_multi_mesh_actors()
+            self.current_mesh_path = None
+            self.is_overlay_active = False
+            self.overlay_cb.blockSignals(True)
+            self.overlay_cb.setChecked(False)
+            self.overlay_cb.blockSignals(False)
+            self.clear_template_actors()
         
         if mode == "full_3d":
             self.maximized_frame = None
@@ -431,6 +496,7 @@ class VtkViewer(QWidget):
             self.set_3d_plane_buttons_visible(False)
             self.mesh_max_btn.setVisible(False)
             self.template_cb.setVisible(True)
+            self.overlay_cb.setVisible(True)
             
             # Update title
             disp = f"3D View — {module_name}" if module_name else "3D View"
@@ -440,7 +506,7 @@ class VtkViewer(QWidget):
             if self.template_cb.isChecked():
                 self.update_template_overlay()
                 
-            self.mesh_renderer.ResetCamera()
+            self.reset_3d_camera()
             self.mesh_vtkWidget.GetRenderWindow().Render()
             
         else: # quad mode
@@ -459,11 +525,12 @@ class VtkViewer(QWidget):
             self.mesh_title_lbl.setText("3D Mesh View")
             self.mesh_max_btn.setVisible(True)
             self.template_cb.setVisible(False)
+            self.overlay_cb.setVisible(False)
             
-            # Remove template actor in quad mode unless requested
-            if self.template_actor is not None:
-                self.mesh_renderer.RemoveActor(self.template_actor)
-                self.template_actor = None
+            # Remove template actor and multi mesh actors in quad mode unless requested
+            self.clear_template_actors()
+            if self.multi_mesh_actors:
+                self.clear_multi_mesh_actors()
                 
             if self.mesh_view_enabled:
                 self.set_3d_plane_buttons_visible(True)
@@ -471,33 +538,101 @@ class VtkViewer(QWidget):
             self.update_legend()
             self.mesh_vtkWidget.GetRenderWindow().Render()
 
-    def get_template_path(self, side=None):
+    def clear_template_actors(self):
+        for act in self.template_actors:
+            self.mesh_renderer.RemoveActor(act)
+        self.template_actors = []
+        self.template_actor = None
+
+    def set_side_filter(self, side_filter: str):
+        self.current_side_filter = side_filter
+        if self.template_cb.isChecked():
+            if side_filter in ("rh", "right"):
+                chosen_side = "right"
+            elif side_filter in ("lh", "left"):
+                chosen_side = "left"
+            else:
+                chosen_side = "all"
+            self.update_template_overlay(side=chosen_side)
+
+    def get_template_paths(self, side=None):
+        """Returns (candidates_list, resolved_side, mod_type) where candidates_list is a list of (filepath, side_str)"""
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         templates_dir = os.path.join(project_root, "Templates")
         
-        if side is None:
-            if self.current_mesh_path:
-                bn = os.path.basename(self.current_mesh_path).lower()
-                side = "right" if ("rh" in bn or "right" in bn) else "left"
-            elif self.current_side_filter == "rh":
-                side = "right"
-            else:
-                side = "left"
-        else:
-            side = "right" if ("rh" in side.lower() or "right" in side.lower()) else "left"
-            
         is_spharm = ("spharm" in self.current_module_name.lower()) or (
             self.current_mesh_path and "spharm" in self.current_mesh_path.lower()
+        ) or (
+            self.multi_mesh_paths and any("spharm" in p.lower() for p in self.multi_mesh_paths[:3])
         )
+        mod_type = "SPHARM" if is_spharm else "ICP"
+        sub_dir = "SPHARM" if is_spharm else "ICP"
         
-        if is_spharm:
-            cand = os.path.join(templates_dir, "SPHARM", f"template_spharm_{side}.vtk")
+        detected_side = None
+        if side:
+            s_low = str(side).lower()
+            if s_low == "all":
+                detected_side = "all"
+            elif s_low in ("right", "rh") or "right" in s_low or "rh" in s_low:
+                detected_side = "right"
+            elif s_low in ("left", "lh") or "left" in s_low or "lh" in s_low:
+                detected_side = "left"
+
+        # 1. Prioritize active side filter
+        if detected_side is None:
+            if self.current_side_filter in ("rh", "right"):
+                detected_side = "right"
+            elif self.current_side_filter in ("lh", "left"):
+                detected_side = "left"
+            elif self.current_side_filter == "all":
+                if self.is_overlay_active or self.mesh_actor is None:
+                    detected_side = "all"
+
+        # 2. If still None and a single mesh is loaded, infer from its filename
+        if detected_side is None and self.current_mesh_path and not self.is_overlay_active:
+            mesh_to_check = self.current_mesh_path
+            fp_low = mesh_to_check.replace("\\", "/").lower()
+            bn = os.path.basename(mesh_to_check).lower()
+            if "rh_" in bn or "_rh." in bn or "_rh_" in bn or "right" in bn or "/right/" in fp_low or "/rh/" in fp_low or "right_hippocampus" in fp_low:
+                detected_side = "right"
+            elif "lh_" in bn or "_lh." in bn or "_lh_" in bn or "left" in bn or "/left/" in fp_low or "/lh/" in fp_low or "left_hippocampus" in fp_low:
+                detected_side = "left"
+
+        # 3. Default fallback
+        if detected_side is None:
+            detected_side = "all" if self.current_side_filter == "all" else "left"
+
+        def get_cand(s):
+            if is_spharm:
+                c = os.path.join(templates_dir, sub_dir, f"template_spharm_{s}.vtk")
+                if not os.path.isfile(c):
+                    c = os.path.join(templates_dir, sub_dir, f"template_spharm_{s}.ply")
+            else:
+                c = os.path.join(templates_dir, sub_dir, f"template_mean_{s}.vtk")
+                if not os.path.isfile(c):
+                    c = os.path.join(templates_dir, sub_dir, f"template_mean_{s}.ply")
+            return c if os.path.isfile(c) else None
+
+        results = []
+        if detected_side == "all":
+            left_cand = get_cand("left")
+            right_cand = get_cand("right")
+            if left_cand:
+                results.append((left_cand, "left"))
+            if right_cand:
+                results.append((right_cand, "right"))
         else:
-            cand = os.path.join(templates_dir, "ICP", f"template_mean_{side}.vtk")
-            
-        if os.path.isfile(cand):
-            return cand, side, ("SPHARM" if is_spharm else "ICP")
-        return None, side, ("SPHARM" if is_spharm else "ICP")
+            cand = get_cand(detected_side)
+            if cand:
+                results.append((cand, detected_side))
+
+        return results, detected_side, mod_type
+
+    def get_template_path(self, side=None):
+        results, detected_side, mod_type = self.get_template_paths(side=side)
+        if results:
+            return results[0][0], detected_side, mod_type
+        return None, detected_side, mod_type
 
     def on_template_cb_toggled(self, checked: bool):
         self.signal_template_toggled.emit(checked)
@@ -509,67 +644,261 @@ class VtkViewer(QWidget):
         self.template_cb.blockSignals(False)
         self.update_template_overlay()
 
-    def update_template_overlay(self):
+    def on_overlay_cb_toggled(self, checked: bool):
+        self.signal_overlay_toggled.emit(checked)
+
+    def set_overlay_visible(self, visible: bool):
+        self.overlay_cb.blockSignals(True)
+        self.overlay_cb.setChecked(visible)
+        self.overlay_cb.blockSignals(False)
+
+    def get_spharm_lh_transform(self):
+        """Precomputed Kabsch rigid transform from template_spharm_left to template_spharm_right.
+        Ensures LH SPHARM meshes and template face the exact same canonical upright C-crescent orientation as RH."""
+        tr = vtk.vtkTransform()
+        tr.PostMultiply()
+        tr.Translate(0.00260724, 0.05516517, 0.10794069)
+        mat = vtk.vtkMatrix4x4()
+        R = [
+            [ 0.69549754,  0.70316967, -0.14776868],
+            [-0.66605966,  0.55378502, -0.49968658],
+            [-0.26953237,  0.44595355,  0.85350907]
+        ]
+        for i in range(3):
+            for j in range(3):
+                mat.SetElement(i, j, R[i][j])
+        tr.Concatenate(mat)
+        tr.Translate(-0.05795671, 0.04367124, -0.06888033)
+        return tr
+
+    def reset_3d_camera(self, side=None):
+        """Sets canonical viewing direction without modifying underlying mesh data.
+        For SPHARM meshes, orients camera to the upright vertical crescent angle (matching auto_rh_front).
+        Non-SPHARM meshes (e.g. ICP) maintain their standard coordinate view."""
+        self.mesh_renderer.ResetCamera()
+        camera = self.mesh_renderer.GetActiveCamera()
+        fp = camera.GetFocalPoint()
+        dist = camera.GetDistance()
+        camera.SetFocalPoint(fp[0], fp[1], fp[2])
+
+        is_spharm = ("spharm" in str(self.current_module_name).lower()) or (
+            self.current_mesh_path and "spharm" in self.current_mesh_path.lower()
+        ) or (
+            self.multi_mesh_paths and any("spharm" in p.lower() for p in self.multi_mesh_paths[:3])
+        )
+
+        if is_spharm:
+            # SPHARM: Left & Right meshes and templates are visually unified in orientation.
+            # Upright canonical vertical crescent angle (matching auto_rh_front).
+            camera.SetPosition(fp[0], fp[1] - dist, fp[2])
+            camera.SetViewUp(-0.592, 0.0, 0.806)
+        else:
+            # Non-SPHARM (ICP and others): DO NOT TOUCH! Left untouched as requested by user.
+            camera.SetPosition(fp[0], fp[1] - dist, fp[2])
+            camera.SetViewUp(0.0, 0.0, 1.0)
+
+        self.mesh_renderer.ResetCameraClippingRange()
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+
+    def update_template_overlay(self, side=None):
         if not self.template_cb.isChecked():
-            if self.template_actor is not None:
-                self.mesh_renderer.RemoveActor(self.template_actor)
-                self.template_actor = None
+            if self.template_actors or self.template_actor is not None:
+                self.clear_template_actors()
                 self.update_legend()
                 self.mesh_vtkWidget.GetRenderWindow().Render()
                 self.signal_log_message.emit("Reference template hidden.")
             return
 
-        tmpl_path, side, mod_type = self.get_template_path()
-        if not tmpl_path:
-            self.signal_log_message.emit(f"[WARNING] Reference template not found for {side} ({mod_type}).")
+        tmpl_specs, resolved_side, mod_type = self.get_template_paths(side=side)
+        if not tmpl_specs:
+            self.signal_log_message.emit(f"[WARNING] Reference template not found for {resolved_side} ({mod_type}).")
             return
 
-        # If an existing template actor is present, remove it first
-        if self.template_actor is not None:
-            self.mesh_renderer.RemoveActor(self.template_actor)
-            self.template_actor = None
+        # Clear existing template actors first
+        self.clear_template_actors()
 
-        if tmpl_path.endswith(".ply"):
-            reader = vtk.vtkPLYReader()
+        is_spharm = ("spharm" in str(self.current_module_name).lower()) or any(
+            "spharm" in p[0].lower() for p in tmpl_specs
+        )
+
+        for tmpl_path, tmpl_side in tmpl_specs:
+            if tmpl_path.endswith(".ply"):
+                reader = vtk.vtkPLYReader()
+            else:
+                reader = vtk.vtkPolyDataReader()
+            reader.SetFileName(tmpl_path)
+            reader.Update()
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(reader.GetOutputPort())
+            mapper.ScalarVisibilityOff()
+
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+
+            if is_spharm and tmpl_side == "left":
+                actor.SetUserTransform(self.get_spharm_lh_transform())
+            
+            # Warm Amber / Gold translucent ghost surface
+            prop = actor.GetProperty()
+            prop.SetColor(0.95, 0.76, 0.20)
+            prop.SetOpacity(0.45)
+            prop.SetSpecular(0.3)
+            prop.SetSpecularPower(20)
+            prop.SetInterpolationToPhong()
+
+            self.mesh_renderer.AddActor(actor)
+            self.template_actors.append(actor)
+
+        if self.template_actors:
+            self.template_actor = self.template_actors[0]
+
+        self.reset_3d_camera(side=resolved_side)
+        if resolved_side == "all":
+            tmpl_name = f"{mod_type} Left & Right Mean"
+        elif resolved_side == "left":
+            tmpl_name = f"{mod_type} Left Mean"
         else:
-            reader = vtk.vtkPolyDataReader()
-        reader.SetFileName(tmpl_path)
-        reader.Update()
+            tmpl_name = f"{mod_type} Right Mean"
 
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(reader.GetOutputPort())
-        mapper.ScalarVisibilityOff()
-
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        
-        # Warm Amber / Gold translucent ghost surface
-        prop = actor.GetProperty()
-        prop.SetColor(0.95, 0.76, 0.20)
-        prop.SetOpacity(0.42)
-        prop.SetSpecular(0.3)
-        prop.SetSpecularPower(20)
-        prop.SetInterpolationToPhong()
-
-        self.template_actor = actor
-        self.mesh_renderer.AddActor(self.template_actor)
-        self.mesh_renderer.ResetCamera()
-        self.update_legend(tmpl_name=f"{mod_type} {side.capitalize()} Mean")
+        self.update_legend(tmpl_name=tmpl_name)
         self.mesh_vtkWidget.GetRenderWindow().Render()
-        self.signal_log_message.emit(f"[INFO] Reference template overlaid: {os.path.basename(tmpl_path)} ({side.upper()})")
+        names_str = ", ".join([f"{os.path.basename(p)} ({s.upper()})" for p, s in tmpl_specs])
+        self.signal_log_message.emit(f"[INFO] Reference template overlaid: {names_str}")
+
+    def clear_multi_mesh_actors(self):
+        for act in self.multi_mesh_actors:
+            self.mesh_renderer.RemoveActor(act)
+        self.multi_mesh_actors = []
+        self.multi_mesh_paths = []
+        self.is_overlay_active = False
+
+    def display_all_meshes(self, filepaths, side_filter="all"):
+        self.current_side_filter = side_filter
+        self.current_mesh_path = None
+        if not filepaths:
+            self.clear_multi_mesh_actors()
+            self.update_legend()
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            return
+
+        # Clear existing single mesh actor
+        if self.mesh_actor is not None:
+            self.mesh_renderer.RemoveActor(self.mesh_actor)
+            self.mesh_actor = None
+        self.clear_multi_mesh_actors()
+        self.is_overlay_active = True
+        self.multi_mesh_paths = filepaths
+
+        # Pleasing soft translucent color palettes
+        left_colors = [
+            (0.40, 0.70, 0.95), (0.35, 0.60, 0.90), (0.45, 0.80, 0.98),
+            (0.50, 0.65, 0.95), (0.30, 0.75, 0.85), (0.55, 0.70, 1.00)
+        ]
+        right_colors = [
+            (0.95, 0.65, 0.50), (0.90, 0.55, 0.45), (0.98, 0.70, 0.55),
+            (0.92, 0.60, 0.40), (0.85, 0.50, 0.45), (0.95, 0.75, 0.60)
+        ]
+
+        loaded_count = 0
+        for i, fp in enumerate(filepaths):
+            if not (fp.endswith(".vtk") or fp.endswith(".ply") or fp.endswith(".nii.gz") or fp.endswith(".mgz") or fp.endswith(".nii")):
+                continue
+            if fp.endswith(".ply"):
+                r = vtk.vtkPLYReader()
+                r.SetFileName(fp)
+                r.Update()
+                output_port = r.GetOutputPort()
+            elif fp.endswith(".vtk"):
+                r = vtk.vtkPolyDataReader()
+                r.SetFileName(fp)
+                r.Update()
+                output_port = r.GetOutputPort()
+            else:
+                r = vtk.vtkNIFTIImageReader()
+                r.SetFileName(fp)
+                r.Update()
+                mc = vtk.vtkMarchingCubes()
+                mc.SetInputConnection(r.GetOutputPort())
+                mc.SetValue(0, 0.5)
+                sm = vtk.vtkWindowedSincPolyDataFilter()
+                sm.SetInputConnection(mc.GetOutputPort())
+                sm.SetNumberOfIterations(15)
+                sm.BoundarySmoothingOff()
+                sm.FeatureEdgeSmoothingOff()
+                sm.SetPassBand(0.1)
+                sm.NonManifoldSmoothingOn()
+                sm.NormalizeCoordinatesOn()
+                sm.Update()
+                output_port = sm.GetOutputPort()
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(output_port)
+            mapper.ScalarVisibilityOff()
+
+            act = vtk.vtkActor()
+            act.SetMapper(mapper)
+
+            fp_low = fp.replace("\\", "/").lower()
+            bn = os.path.basename(fp).lower()
+            is_rh = ("rh" in bn or "right" in bn or "/right/" in fp_low or side_filter == "rh")
+            if is_rh:
+                c = right_colors[i % len(right_colors)]
+            else:
+                c = left_colors[i % len(left_colors)]
+
+            is_spharm = ("spharm" in str(self.current_module_name).lower()) or any(
+                "spharm" in p.lower() for p in filepaths[:3]
+            )
+            if is_spharm and not is_rh:
+                act.SetUserTransform(self.get_spharm_lh_transform())
+
+            act.GetProperty().SetColor(*c)
+            act.GetProperty().SetOpacity(0.38)
+            act.GetProperty().SetSpecular(0.25)
+            act.GetProperty().SetSpecularPower(15)
+            act.GetProperty().SetInterpolationToPhong()
+
+            self.mesh_renderer.AddActor(act)
+            self.multi_mesh_actors.append(act)
+            loaded_count += 1
+
+        if side_filter in ("rh", "right"):
+            chosen_side = "right"
+        elif side_filter in ("lh", "left"):
+            chosen_side = "left"
+        else:
+            chosen_side = "all"
+
+        # If template overlay is enabled, update it
+        if self.template_cb.isChecked():
+            self.update_template_overlay(side=chosen_side)
+
+        self.reset_3d_camera(side=chosen_side)
+        self.update_legend()
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+        self.signal_log_message.emit(f"[INFO] Superimposed {loaded_count} meshes in 3D view (Filter: {side_filter.upper()}).")
 
     def update_legend(self, tmpl_name=None):
         parts = []
-        if self.current_mesh_path:
+        if self.is_overlay_active and self.multi_mesh_actors:
+            side_str = "Right" if self.current_side_filter == "rh" else ("Left" if self.current_side_filter == "lh" else "All")
+            parts.append(f'<span style="color: #1abc9c; font-weight: bold;">&#9679; Overlaid Meshes: {len(self.multi_mesh_actors)} ({side_str})</span>')
+        elif self.current_mesh_path and self.mesh_actor:
             m_name = os.path.basename(self.current_mesh_path)
             if len(m_name) > 36:
                 m_name = m_name[:16] + "..." + m_name[-16:]
             parts.append(f'<span style="color: #79c0ff; font-weight: bold;">&#9679; Patient: {m_name}</span>')
             
-        if self.template_cb.isChecked() and self.template_actor is not None:
+        if self.template_cb.isChecked() and (self.template_actors or self.template_actor is not None):
             if not tmpl_name:
-                _, side, mod_type = self.get_template_path()
-                tmpl_name = f"{mod_type} {side.capitalize()} Mean"
+                _, side, mod_type = self.get_template_paths()
+                if side == "all":
+                    tmpl_name = f"{mod_type} Left & Right Mean"
+                elif side == "left":
+                    tmpl_name = f"{mod_type} Left Mean"
+                else:
+                    tmpl_name = f"{mod_type} Right Mean"
             parts.append(f'<span style="color: #f1c40f; font-weight: bold;">&#9679; Template: {tmpl_name} (Ghost)</span>')
             
         if parts:
@@ -648,6 +977,19 @@ class VtkViewer(QWidget):
                     self.mesh_vtkWidget.GetRenderWindow().Render()
 
     def display_mesh(self, filepath, side_filter="all"):
+        if not filepath:
+            if self.mesh_actor is not None:
+                self.mesh_renderer.RemoveActor(self.mesh_actor)
+                self.mesh_actor = None
+            if self.multi_mesh_actors:
+                self.clear_multi_mesh_actors()
+            self.current_mesh_path = None
+            if self.template_cb.isChecked():
+                self.update_template_overlay()
+            self.update_legend()
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            return
+
         if not (filepath.endswith(".nii.gz") or filepath.endswith(".mgz") or filepath.endswith(".vtk") or filepath.endswith(".ply")):
             self.signal_log_message.emit("[ERROR] Unsupported mesh format. Expected .vtk, .ply, .nii.gz, or .mgz")
             return
@@ -665,6 +1007,12 @@ class VtkViewer(QWidget):
         if self.mesh_actor is not None:
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
+
+        if self.multi_mesh_actors:
+            self.clear_multi_mesh_actors()
+            self.overlay_cb.blockSignals(True)
+            self.overlay_cb.setChecked(False)
+            self.overlay_cb.blockSignals(False)
         
         if filepath.endswith(".vtk") or filepath.endswith(".ply"):
             if filepath.endswith(".ply"):
@@ -682,10 +1030,18 @@ class VtkViewer(QWidget):
             actor.SetMapper(mapper)
 
             # Soft tint based on hemisphere
+            fp_low = filepath.replace("\\", "/").lower()
             bn = os.path.basename(filepath).lower()
-            if "rh" in bn or "right" in bn:
+            is_rh = ("rh" in bn or "right" in bn or "/right/" in fp_low or side_filter == "rh")
+            is_lh = ("lh" in bn or "left" in bn or "/left/" in fp_low or side_filter == "lh")
+            
+            is_spharm = ("spharm" in str(self.current_module_name).lower()) or ("spharm" in fp_low)
+            if is_spharm and is_lh:
+                actor.SetUserTransform(self.get_spharm_lh_transform())
+
+            if is_rh:
                 actor.GetProperty().SetColor(0.95, 0.65, 0.55) # Soft Coral
-            elif "lh" in bn or "left" in bn:
+            elif is_lh:
                 actor.GetProperty().SetColor(0.55, 0.75, 0.95) # Soft Blue
             else:
                 actor.GetProperty().SetColor(0.72, 0.82, 0.93) # Cyan
@@ -699,10 +1055,11 @@ class VtkViewer(QWidget):
             self.mesh_renderer.AddActor(self.mesh_actor)
             
             # If template overlay is enabled, refresh it to align with this mesh's side
+            chosen_side = "right" if is_rh else ("left" if is_lh else None)
             if self.template_cb.isChecked():
-                self.update_template_overlay()
+                self.update_template_overlay(side=chosen_side)
                 
-            self.mesh_renderer.ResetCamera()
+            self.reset_3d_camera(side=chosen_side)
             self.update_legend()
             self.mesh_vtkWidget.GetRenderWindow().Render()
             return
@@ -741,7 +1098,7 @@ class VtkViewer(QWidget):
         
         self.mesh_actor = actor
         self.mesh_renderer.AddActor(self.mesh_actor)
-        self.mesh_renderer.ResetCamera()
+        self.reset_3d_camera()
         self.update_legend()
         self.mesh_vtkWidget.GetRenderWindow().Render()
 
@@ -751,6 +1108,7 @@ class VtkViewer(QWidget):
                 renderer = viewer.GetRenderer()
                 renderer.ResetCamera()
                 viewer.Render()
+        self.reset_3d_camera()
         self.signal_log_message.emit("Camera reset to original position.")
 
     def display_segmentation_overlays(self, base_img_path, lh_mask_path, rh_mask_path, side_filter="all"):

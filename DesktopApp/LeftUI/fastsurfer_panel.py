@@ -5,6 +5,36 @@ import subprocess
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QCheckBox, QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabBar, QLineEdit, QFileDialog)
 from PyQt6.QtCore import pyqtSignal, Qt, QThread
 
+class ToggleTableWidget(QTableWidget):
+    """QTableWidget supporting ExtendedSelection (Ctrl/Shift multi-select)
+    and single-click toggle/deselect when clicking an already selected sole row."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None:
+                row = item.row()
+                modifiers = event.modifiers()
+                has_ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                has_shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+
+                selected_rows = list(set(it.row() for it in self.selectedItems()))
+
+                if not has_ctrl and not has_shift:
+                    if selected_rows == [row]:
+                        self.clearSelection()
+                        return
+                    elif row in selected_rows and len(selected_rows) > 1:
+                        self.clearSelection()
+                        self.selectRow(row)
+                        return
+
+        super().mousePressEvent(event)
+
 def get_project_root():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -49,7 +79,7 @@ class FastSurferWorker(QThread):
 
 class FastsurferPanel(QWidget):
     signal_log_message = pyqtSignal(str)
-    signal_mesh_selected = pyqtSignal(str, str) # filepath, side_filter ("all", "lh", "rh")
+    signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_fastsurfer_completed = pyqtSignal()
     
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
@@ -58,6 +88,7 @@ class FastsurferPanel(QWidget):
         self.get_output_folder = get_output_folder_func
         self.all_files = []
         self.current_side_filter = "all"
+        self.last_selected_row = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -268,13 +299,11 @@ class FastsurferPanel(QWidget):
         res_layout.addWidget(self.tab_bar)
         
         # Results Table with 3 Columns
-        self.results_table = QTableWidget(0, 3)
+        self.results_table = ToggleTableWidget(0, 3)
         self.results_table.setHorizontalHeaderLabels(["File Name", "Side", "File Path"])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.results_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -294,7 +323,6 @@ class FastsurferPanel(QWidget):
             }
         """)
         self.results_table.itemSelectionChanged.connect(self.on_mesh_selected)
-        self.results_table.cellClicked.connect(self.on_cell_clicked)
         res_layout.addWidget(self.results_table)
         
         fs_layout.addWidget(res_group)
@@ -486,6 +514,7 @@ class FastsurferPanel(QWidget):
             # Col 0: File name
             name_item = QTableWidgetItem(item_info["filename"])
             name_item.setData(Qt.ItemDataRole.UserRole, item_info["filepath"])
+            name_item.setData(Qt.ItemDataRole.UserRole + 1, item_info.get("side_key", ""))
             self.results_table.setItem(i, 0, name_item)
             
             # Col 1: Side
@@ -505,18 +534,32 @@ class FastsurferPanel(QWidget):
         self.results_table.blockSignals(False)
         self.results_table.clearSelection()
 
-    def on_cell_clicked(self, row, col):
-        self.results_table.selectRow(row)
-        self.on_mesh_selected()
-
     def on_mesh_selected(self):
-        selected_items = self.results_table.selectedItems()
-        if selected_items:
-            # First item in row holds the UserRole filepath
-            row = selected_items[0].row()
+        selected_rows = sorted(list(set(index.row() for index in self.results_table.selectedIndexes())))
+        if not selected_rows:
+            # 0 items selected -> clear 3D mesh
+            self.signal_mesh_selected.emit("", self.current_side_filter)
+            return
+
+        if len(selected_rows) == 1:
+            row = selected_rows[0]
             name_item = self.results_table.item(row, 0)
             if name_item:
                 filepath = name_item.data(Qt.ItemDataRole.UserRole)
+                side_key = name_item.data(Qt.ItemDataRole.UserRole + 1) or self.current_side_filter
                 if filepath:
-                    self.signal_mesh_selected.emit(filepath, self.current_side_filter)
+                    self.signal_mesh_selected.emit(filepath, side_key)
+            return
+
+        # Multi-select (> 1 meshes selected via Ctrl / Shift)
+        filepaths = []
+        for row in selected_rows:
+            name_item = self.results_table.item(row, 0)
+            if name_item:
+                fp = name_item.data(Qt.ItemDataRole.UserRole)
+                if fp:
+                    filepaths.append(fp)
+
+        if filepaths:
+            self.signal_mesh_selected.emit(filepaths, self.current_side_filter)
 
