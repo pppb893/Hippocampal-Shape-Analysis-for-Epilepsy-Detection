@@ -75,6 +75,8 @@ class MainWindow(QMainWindow):
         self.h_splitter.addWidget(self.left_scroll)
         self.h_splitter.addWidget(self.right_scroll)
         self.h_splitter.setSizes([430, 850])
+        self.saved_h_splitter_sizes = [430, 850]
+        self.h_splitter.splitterMoved.connect(self.on_h_splitter_moved)
         
         self.v_splitter.addWidget(self.h_splitter)
         
@@ -262,7 +264,14 @@ class MainWindow(QMainWindow):
 
         toolbar.addWidget(QLabel("  Modules: "))
         self.module_combo = QComboBox()
-        self.module_combo.addItems(["Data Importer", "FastSurfer Segmentation", "ICP Registration", "SPHARM Processing"])
+        self.module_combo.addItems([
+            "Main Panel",
+            "Data Importer",
+            "FastSurfer Segmentation",
+            "ICP Registration",
+            "SPHARM Processing",
+            "Result Panel"
+        ])
         self.module_combo.setMinimumWidth(200)
         toolbar.addWidget(self.module_combo)
 
@@ -320,6 +329,12 @@ class MainWindow(QMainWindow):
             self.is_terminal_fullscreen = False
             self.expand_btn.setText("⤢ Expand")
             self.expand_btn.setToolTip("Expand terminal to full screen")
+
+    def on_h_splitter_moved(self, pos, index):
+        if self.right_scroll.isVisible():
+            sizes = self.h_splitter.sizes()
+            if len(sizes) == 2 and sizes[0] > 50 and sizes[1] > 50:
+                self.saved_h_splitter_sizes = sizes
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -394,14 +409,44 @@ class MainWindow(QMainWindow):
         # Clear previous module's patient meshes from 3D view so they do not mix
         self.right_panel.viewer.clear_all_patient_meshes()
 
-        if module_name in ("ICP Registration", "SPHARM Processing"):
-            self.right_panel.set_view_mode("full_3d", module_name)
-        elif module_name == "FastSurfer Segmentation":
-            self.right_panel.set_view_mode("quad", module_name)
-            self.right_panel.viewer.set_mesh_view_visible(True)
+        # Modules configuration: define which modules have Right UI enabled
+        # Currently Main Panel and Result Panel do not have Right UI,
+        # but the Right UI system is fully preserved so either can be enabled here in the future.
+        modules_with_right_ui = {
+            "Main Panel": False,
+            "Data Importer": True,
+            "FastSurfer Segmentation": True,
+            "ICP Registration": True,
+            "SPHARM Processing": True,
+            "Result Panel": False,
+        }
+
+        has_right_ui = modules_with_right_ui.get(module_name, False)
+
+        if not has_right_ui:
+            # Hide right UI for panels without right UI
+            if self.right_scroll.isVisible():
+                sizes = self.h_splitter.sizes()
+                if len(sizes) == 2 and sizes[0] > 50 and sizes[1] > 50:
+                    self.saved_h_splitter_sizes = sizes
+            self.right_scroll.setVisible(False)
         else:
-            self.right_panel.set_view_mode("quad", module_name)
-            self.right_panel.viewer.set_mesh_view_visible(False)
+            # Show right UI and restore previous horizontal split size
+            if not self.right_scroll.isVisible():
+                self.right_scroll.setVisible(True)
+                if hasattr(self, 'saved_h_splitter_sizes') and self.saved_h_splitter_sizes:
+                    self.h_splitter.setSizes(self.saved_h_splitter_sizes)
+                else:
+                    self.h_splitter.setSizes([430, 850])
+
+            if module_name in ("ICP Registration", "SPHARM Processing"):
+                self.right_panel.set_view_mode("full_3d", module_name)
+            elif module_name == "FastSurfer Segmentation":
+                self.right_panel.set_view_mode("quad", module_name)
+                self.right_panel.viewer.set_mesh_view_visible(True)
+            else:
+                self.right_panel.set_view_mode("quad", module_name)
+                self.right_panel.viewer.set_mesh_view_visible(False)
 
         # Sync state with newly active module panel
         active_panel = self.left_panel.get_current_module_panel()

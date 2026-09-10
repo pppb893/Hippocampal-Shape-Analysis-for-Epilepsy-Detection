@@ -1,10 +1,12 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QStackedWidget
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from .main_panel import MainPanel
 from .import_panel import ImportPanel
 from .fastsurfer_panel import FastsurferPanel
 from .icp_panel import IcpPanel
 from .spharm_panel import SpharmPanel
+from .result_panel import ResultPanel
 
 class AdaptiveStackedWidget(QStackedWidget):
     def sizeHint(self):
@@ -47,19 +49,23 @@ class LeftPanel(QWidget):
         left_layout.addWidget(self.stacked_widget)
 
         # Create panels
+        self.main_panel = MainPanel()
         self.import_panel = ImportPanel()
         self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.icp_panel = IcpPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.spharm_panel = SpharmPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
+        self.result_panel = ResultPanel(get_input_folder=self.import_panel.get_folder, get_output_folder=self.import_panel.get_output_folder)
 
-        # Add to stacked widget
+        # Add to stacked widget (Main Panel first, Result Panel last)
+        self.stacked_widget.addWidget(self.main_panel)
         self.stacked_widget.addWidget(self.import_panel)
         self.stacked_widget.addWidget(self.fastsurfer_panel)
         self.stacked_widget.addWidget(self.icp_panel)
         self.stacked_widget.addWidget(self.spharm_panel)
+        self.stacked_widget.addWidget(self.result_panel)
 
         # Connect signals
-        for panel in [self.import_panel, self.fastsurfer_panel, self.icp_panel, self.spharm_panel]:
+        for panel in [self.main_panel, self.import_panel, self.fastsurfer_panel, self.icp_panel, self.spharm_panel, self.result_panel]:
             panel.signal_log_message.connect(self.signal_log_message)
             
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
@@ -108,11 +114,12 @@ class LeftPanel(QWidget):
 
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)
-        if index == 1:
+        current = self.stacked_widget.currentWidget()
+        if current == self.fastsurfer_panel:
             self.fastsurfer_panel.update_run_button_state()
-        elif index == 2:
+        elif current == self.icp_panel:
             self.icp_panel.update_run_button_state()
-        elif index == 3:
+        elif current == self.spharm_panel:
             self.spharm_panel.update_run_button_state()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()
