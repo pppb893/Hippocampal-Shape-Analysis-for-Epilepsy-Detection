@@ -1,3 +1,4 @@
+import os
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QStackedWidget
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -49,12 +50,17 @@ class LeftPanel(QWidget):
         left_layout.addWidget(self.stacked_widget)
 
         # Create panels
-        self.main_panel = MainPanel()
         self.import_panel = ImportPanel()
         self.fastsurfer_panel = FastsurferPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.icp_panel = IcpPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.spharm_panel = SpharmPanel(self.import_panel.get_folder, self.import_panel.get_output_folder)
         self.result_panel = ResultPanel(get_input_folder=self.import_panel.get_folder, get_output_folder=self.import_panel.get_output_folder)
+        self.main_panel = MainPanel(
+            import_panel=self.import_panel,
+            fastsurfer_panel=self.fastsurfer_panel,
+            icp_panel=self.icp_panel,
+            spharm_panel=self.spharm_panel
+        )
 
         # Add to stacked widget (Main Panel first, Result Panel last)
         self.stacked_widget.addWidget(self.main_panel)
@@ -71,6 +77,7 @@ class LeftPanel(QWidget):
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
         
         def on_directories_changed(in_dir, out_dir):
+            self.main_panel.set_directories(in_dir, out_dir)
             self.fastsurfer_panel.update_run_button_state()
             self.icp_panel.update_run_button_state()
             self.spharm_panel.update_run_button_state()
@@ -115,11 +122,37 @@ class LeftPanel(QWidget):
     def switch_module(self, index):
         self.stacked_widget.setCurrentIndex(index)
         current = self.stacked_widget.currentWidget()
-        if current == self.fastsurfer_panel:
+        if current == self.main_panel:
+            self.main_panel.update_stage_preview()
+            self.main_panel.populate_main_table()
+        elif current == self.import_panel:
+            in_dir = self.import_panel.get_folder().strip()
+            if in_dir and os.path.isdir(in_dir):
+                if getattr(self.import_panel, 'loaded_directory', None) != in_dir or self.import_panel.subjects_table.rowCount() == 0:
+                    self.import_panel.load_subjects_from_directory(in_dir)
+        elif current == self.fastsurfer_panel:
+            out_dir = self.import_panel.get_output_folder().strip()
+            if out_dir and os.path.isdir(out_dir):
+                fs_dir = os.path.join(out_dir, "fastsurfer")
+                if not self.fastsurfer_panel.fs_dir_input.text().strip() or not os.path.isdir(self.fastsurfer_panel.fs_dir_input.text().strip()):
+                    self.fastsurfer_panel.fs_dir_input.setText(fs_dir)
             self.fastsurfer_panel.update_run_button_state()
+            self.fastsurfer_panel.populate_results_table()
         elif current == self.icp_panel:
+            out_dir = self.import_panel.get_output_folder().strip()
+            if out_dir and os.path.isdir(out_dir):
+                icp_dir = os.path.join(out_dir, "output_ICP")
+                if not self.icp_panel.icp_dir_input.text().strip() or not os.path.isdir(self.icp_panel.icp_dir_input.text().strip()):
+                    self.icp_panel.icp_dir_input.setText(icp_dir)
             self.icp_panel.update_run_button_state()
+            self.icp_panel.populate_results_table()
         elif current == self.spharm_panel:
+            out_dir = self.import_panel.get_output_folder().strip()
+            if out_dir and os.path.isdir(out_dir):
+                spharm_dir = os.path.join(out_dir, "output_SPHARM")
+                if not self.spharm_panel.spharm_dir_input.text().strip() or not os.path.isdir(self.spharm_panel.spharm_dir_input.text().strip()):
+                    self.spharm_panel.spharm_dir_input.setText(spharm_dir)
             self.spharm_panel.update_run_button_state()
+            self.spharm_panel.populate_results_table()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()

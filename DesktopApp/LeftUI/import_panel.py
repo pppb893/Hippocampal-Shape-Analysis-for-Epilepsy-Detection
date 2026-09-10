@@ -403,14 +403,35 @@ class ImportPanel(QWidget):
         else:
             self.signal_log_message.emit("[ERROR] Please select a valid directory first.")
 
-    def load_subjects_from_directory(self, directory):
-        search_patterns = ["*.nrrd", "*.nii.gz", "*.nii", "*.vtk"]
+    def load_subjects_from_directory(self, directory, clear_existing=False):
+        if not directory or not os.path.isdir(directory):
+            return
+
+        if clear_existing or getattr(self, 'loaded_directory', None) != directory:
+            self.subjects_table.setRowCount(0)
+        self.loaded_directory = directory
+
+        search_patterns = ["*.nrrd", "*.nii.gz", "*.nii", "*.vtk", "*.mgz"]
         files = []
         for pattern in search_patterns:
             files.extend(glob.glob(os.path.join(directory, pattern)))
+            files.extend(glob.glob(os.path.join(directory, "**", pattern), recursive=True))
             
+        # Deduplicate while preserving order
+        seen = set()
+        unique_files = []
+        skip_keywords = ["mask", "seg", "aseg", "aparc", "label", "hippo", ".vtk"]
+        for f in files:
+            norm = os.path.normpath(f)
+            if norm not in seen:
+                seen.add(norm)
+                fname = os.path.basename(norm).lower()
+                if not any(kw in fname for kw in skip_keywords):
+                    unique_files.append(norm)
+        files = unique_files
+
         if not files:
-            self.signal_log_message.emit(f"No valid image/mesh files (*.nrrd, *.nii.gz, *.vtk) found in {directory}")
+            self.signal_log_message.emit(f"No valid MRI image files found in {directory}")
             return
             
         # Prevent duplicates
@@ -424,6 +445,10 @@ class ImportPanel(QWidget):
         
         if not new_files:
             self.signal_log_message.emit(f"All files in {directory} are already imported.")
+            if self.subjects_table.rowCount() > 0:
+                if not self.subjects_table.selectedItems():
+                    self.subjects_table.selectRow(0)
+                self.display_selected_subject()
             return
             
         self.signal_log_message.emit(f"Importing {len(new_files)} new files...")
@@ -439,6 +464,12 @@ class ImportPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, filepath)
             
             self.subjects_table.setItem(row, 0, item)
+
+        # Auto-select and display first subject
+        if self.subjects_table.rowCount() > 0:
+            if not self.subjects_table.selectedItems():
+                self.subjects_table.selectRow(0)
+            self.display_selected_subject()
 
     def on_subject_selection_changed(self):
         if self.display_on_click_cb.isChecked():

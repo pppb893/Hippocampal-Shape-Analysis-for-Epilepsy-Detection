@@ -175,6 +175,8 @@ class SpharmPanel(QWidget):
     signal_template_toggled = pyqtSignal(bool)
     signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, file_list, side_filter
     signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
+    signal_spharm_completed = pyqtSignal()
+    signal_spharm_finished = pyqtSignal(bool)
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -873,8 +875,10 @@ class SpharmPanel(QWidget):
         self.update_run_button_state()
         if success:
             self.signal_log_message.emit(">>> Batch SPHARM-PDM Pipeline completed successfully.")
+            self.signal_spharm_completed.emit()
         else:
             self.signal_log_message.emit("[ERROR] SPHARM Pipeline completed with warnings or errors.")
+        self.signal_spharm_finished.emit(success)
         self.populate_results_table()
 
     def on_tab_changed(self, index):

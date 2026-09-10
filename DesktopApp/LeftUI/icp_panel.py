@@ -152,6 +152,7 @@ class IcpPanel(QWidget):
     signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, file_list, side_filter
     signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
     signal_icp_completed = pyqtSignal()
+    signal_icp_finished = pyqtSignal(bool)
 
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -881,6 +882,7 @@ class IcpPanel(QWidget):
             self.signal_icp_completed.emit()
         else:
             self.signal_log_message.emit("[ERROR] ICP Registration completed with warnings or errors.")
+        self.signal_icp_finished.emit(success)
         self.populate_results_table()
 
     def on_tab_changed(self, index):

@@ -81,6 +81,7 @@ class FastsurferPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_fastsurfer_completed = pyqtSignal()
+    signal_fastsurfer_finished = pyqtSignal(bool)
     
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -417,6 +418,7 @@ class FastsurferPanel(QWidget):
             self.signal_fastsurfer_completed.emit()
         else:
             self.signal_log_message.emit("[ERROR] FastSurfer Pipeline failed or finished with errors.")
+        self.signal_fastsurfer_finished.emit(success)
         
         # Sync input path with output folder
         if self.get_output_folder and self.get_output_folder():
@@ -460,8 +462,9 @@ class FastsurferPanel(QWidget):
             found = []
             for d in search_dirs:
                 if os.path.isdir(d):
-                    found.extend(glob.glob(os.path.join(d, "*.nii.gz")))
-                    found.extend(glob.glob(os.path.join(d, "*_hippocampus", "*.nii.gz")))
+                    for ext in ("*.nii.gz", "*.nii", "*.vtk"):
+                        found.extend(glob.glob(os.path.join(d, ext)))
+                        found.extend(glob.glob(os.path.join(d, "*_hippocampus", ext)))
                     
             seen = set()
             for filepath in found:
@@ -469,7 +472,8 @@ class FastsurferPanel(QWidget):
                 if norm_p not in seen and os.path.isfile(norm_p):
                     basename = os.path.basename(norm_p)
                     # Filter only hippocampus masks
-                    if "hippocampus" in basename.lower() or basename.startswith("lh_") or basename.startswith("rh_"):
+                    norm_low = norm_p.lower()
+                    if "hippocampus" in basename.lower() or basename.startswith("lh_") or basename.startswith("rh_") or "left_hippocampus" in norm_low or "right_hippocampus" in norm_low or "_lh." in norm_low or "_rh." in norm_low:
                         seen.add(norm_p)
                         
                         # Determine side

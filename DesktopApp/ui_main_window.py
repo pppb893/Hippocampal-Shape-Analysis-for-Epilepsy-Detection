@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        self.left_panel = LeftPanel(self)
+        self.left_panel = LeftPanel()
         self.right_panel = RightPanel(self)
 
         # Wrap LeftPanel in a scroll area so it doesn't get clipped and allows free vertical resizing
@@ -450,6 +450,11 @@ class MainWindow(QMainWindow):
 
         # Sync state with newly active module panel
         active_panel = self.left_panel.get_current_module_panel()
+        if module_name == "Data Importer" and hasattr(active_panel, 'display_selected_subject'):
+            active_panel.display_selected_subject()
+        elif hasattr(active_panel, 'results_table') and active_panel.results_table.rowCount() > 0:
+            if not active_panel.results_table.selectedItems():
+                active_panel.results_table.selectRow(0)
         if hasattr(active_panel, 'overlay_cb'):
             is_overlay = active_panel.overlay_cb.isChecked()
             self.right_panel.set_overlay_visible(is_overlay)
