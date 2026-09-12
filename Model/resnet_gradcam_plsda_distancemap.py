@@ -676,6 +676,14 @@ def run_pipeline(
     plt.close()
     print(f"Saved: {plot3_path}")
     
+    # Figure 4 & 5: Violin Plots for PLS-DA Components and Model Predictions
+    try:
+        sys.path.append(repo_root)
+        from Visualize.Data_Plots.plot_plsda_model_violin import generate_violin_plots
+        generate_violin_plots(side=side, dataset=dataset_name, output_dir=plots_dir)
+    except Exception as e:
+        print(f"[WARN] Could not generate violin plots: {e}")
+    
     print("\n" + "=" * 70)
     print("ALL PIPELINE STEPS COMPLETED SUCCESSFULLY!")
     print(f"Output files stored in: {output_base_dir}")
