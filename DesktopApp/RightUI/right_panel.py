@@ -168,3 +168,13 @@ class RightPanel(QWidget):
                 self.viewer.display_segmentation_overlays(mri_file, lh_mask, rh_mask, side_filter=side_filter)
             else:
                 self.signal_log_message.emit(f"[INFO] 3D mesh rendered for {subject_id}.")
+
+    def display_gradcam_mesh(self, mesh_path, scalar_mode="GradCAM_Importance", lut_type="gradcam", title="Grad-CAM Attention", side="left", opacity=1.0):
+        self.viewer.display_gradcam_mesh(mesh_path, scalar_mode=scalar_mode, lut_type=lut_type, title=title, side=side, opacity=opacity)
+
+    def set_patient_overlay(self, mesh_path, visible=True, opacity=0.35, side="left"):
+        self.viewer.set_patient_overlay(mesh_path, visible=visible, opacity=opacity, side=side)
+
+    def clear_gradcam_view(self):
+        self.viewer.clear_gradcam_view()
+

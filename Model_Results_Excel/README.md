@@ -26,11 +26,17 @@ Model_Results_Excel/
 │
 ├── 04_Scripts/                           # ⚙️ โค้ด Python สำหรับคำนวณและสร้างผลลัพธ์
 │   ├── generate_newest_bootstrap_results.py         # สคริปต์หลักคำนวณ Bootstrap 1,000 รอบ, P-values และ Excel
-│   └── generate_model_excel.py                      # สคริปต์สร้างตารางสรุป Excel แบบ 2 คลาส
+│   ├── generate_model_excel.py                      # สคริปต์สร้างตารางสรุป Excel แบบ 2 คลาส
+│   ├── generate_plsda_train_test_score_plots.py     # สคริปต์วาด PLS-DA Score Plots (แยกซ้าย-ขวา/Dataset/Markers)
+│   └── organize_and_consolidate_gradcam_results.py  # สคริปต์รวบรวม Grad-CAM Attention และ Distance Mapping
 │
+├── 05_Bootstrap_Violin_Plots/            # 🎻 กราฟ Violin Plot การกระจายตัวของค่าสถิติ Bootstrap 1,000 รอบ
+├── 06_ROC_Curves/                        # 📉 กราฟ ROC Curves และ Confidence Band
+├── 07_Detailed_Model_Plots/              # 🔍 กราฟวิเคราะห์ประสิทธิภาพโมเดลรายชุดข้อมูล
+├── 08_PLSDA_Class_Violin_Plots/          # 🎻 กราฟ Violin Plot พารามิเตอร์ PLS-DA แยกตามคลาส
+├── 09_PLSDA_Score_Plots/                 # 🎯 กราฟ PLS-DA Train/Test Score Space ตามภาพไวท์บอร์ด
+├── 10_GradCAM_and_Distance_Mapping/      # 🧠 กราฟ Grad-CAM Attention Profile และ Distance Mapping Deformation
 └── 05_Legacy_Example_Data/               # 🗄️ ไฟล์ตัวอย่างเก่า (เฉพาะ Ds005602 และ AllAugment รุ่นก่อน)
-    ├── Combined_Bootstrap_Results_Ds005602_AllAugment.csv
-    └── Model_Legend_Ds005602_AllAugment.txt
 ```
 
 ---

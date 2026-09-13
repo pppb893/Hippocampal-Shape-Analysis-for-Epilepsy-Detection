@@ -263,6 +263,9 @@ class VtkViewer(QWidget):
         self.mesh_renderer.AddActor(self.sagittal_outline_actor)
         
         self.mesh_actor = None
+        self.scalar_actor = None
+        self.scalar_bar_actor = None
+        self.patient_overlay_actor = None
         self.mesh_frame.hide()
 
         self.axial_vtkWidget.Initialize()
@@ -1275,3 +1278,193 @@ class VtkViewer(QWidget):
             
         except Exception as e:
             self.signal_log_message.emit(f"Error loading volume: {str(e)}")
+
+    # =========================================================================
+    # Grad-CAM and Deformation Scalar Heatmap Engine
+    # =========================================================================
+    def build_lut_gradcam(self):
+        """Inferno / Hot colormap (0.0 to 1.0) for Grad-CAM attention."""
+        lut = vtk.vtkLookupTable()
+        lut.SetNumberOfTableValues(256)
+        lut.SetRange(0.0, 1.0)
+        lut.Build()
+        for i in range(256):
+            t = i / 255.0
+            r = np.clip(t * 1.5, 0.0, 1.0)
+            g = np.clip((t - 0.3) * 1.5, 0.0, 1.0)
+            b = np.clip((t - 0.7) * 3.0, 0.0, 1.0)
+            lut.SetTableValue(i, float(r), float(g), float(b), 1.0)
+        return lut
+
+    def build_lut_signed_distance(self, max_val=0.16):
+        """Diverging Blue-White-Red colormap (-max to +max mm) for inward atrophy vs expansion."""
+        lut = vtk.vtkLookupTable()
+        lut.SetNumberOfTableValues(256)
+        lut.SetRange(-max_val, max_val)
+        lut.Build()
+        for i in range(256):
+            t = (i / 255.0) * 2.0 - 1.0
+            if t < 0:
+                frac = 1.0 + t
+                r, g, b = frac, frac, 1.0
+            else:
+                frac = 1.0 - t
+                r, g, b = 1.0, frac, frac
+            lut.SetTableValue(i, float(r), float(g), float(b), 1.0)
+        return lut
+
+    def build_lut_distance_mapping(self, max_val=0.16):
+        """Jet / Turbo colormap for positive displacement magnitude (0 to max mm)."""
+        lut = vtk.vtkLookupTable()
+        lut.SetNumberOfTableValues(256)
+        lut.SetRange(0.0, max_val)
+        lut.Build()
+        for i in range(256):
+            t = i / 255.0
+            r = np.clip(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0)
+            g = np.clip(1.5 - abs(4.0 * t - 2.0), 0.0, 1.0)
+            b = np.clip(1.5 - abs(4.0 * t - 1.0), 0.0, 1.0)
+            lut.SetTableValue(i, float(r), float(g), float(b), 1.0)
+        return lut
+
+    def clear_gradcam_view(self):
+        if hasattr(self, 'scalar_actor') and self.scalar_actor:
+            self.mesh_renderer.RemoveActor(self.scalar_actor)
+            self.scalar_actor = None
+        if hasattr(self, 'scalar_bar_actor') and self.scalar_bar_actor:
+            self.mesh_renderer.RemoveActor(self.scalar_bar_actor)
+            self.scalar_bar_actor = None
+        if hasattr(self, 'patient_overlay_actor') and self.patient_overlay_actor:
+            self.mesh_renderer.RemoveActor(self.patient_overlay_actor)
+            self.patient_overlay_actor = None
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+
+    def display_gradcam_mesh(self, mesh_path, scalar_mode="GradCAM_Importance", lut_type="gradcam", title="Grad-CAM Attention", side="left", opacity=1.0):
+        self.clear_gradcam_view()
+        self.clear_all_patient_meshes()
+        self.clear_template_actors()
+
+        if not mesh_path or not os.path.isfile(mesh_path):
+            self.signal_log_message.emit(f"[ERROR] Mesh file not found: {mesh_path}")
+            return
+
+        reader = vtk.vtkPolyDataReader()
+        reader.SetFileName(mesh_path)
+        reader.Update()
+        poly = reader.GetOutput()
+        if poly is None or poly.GetNumberOfPoints() == 0:
+            self.signal_log_message.emit(f"[ERROR] Invalid polydata in: {mesh_path}")
+            return
+
+        # Check scalar array in PointData
+        pdata = poly.GetPointData()
+        arr = pdata.GetArray(scalar_mode)
+        if arr is not None:
+            pdata.SetActiveScalars(scalar_mode)
+            s_range = arr.GetRange()
+        else:
+            if pdata.GetNumberOfArrays() > 0:
+                first_name = pdata.GetArrayName(0)
+                pdata.SetActiveScalars(first_name)
+                s_range = pdata.GetScalars().GetRange()
+            else:
+                s_range = (0.0, 1.0)
+
+        # Build appropriate LUT based on mode
+        if lut_type == "signed_distance":
+            max_abs = max(abs(s_range[0]), abs(s_range[1]))
+            if max_abs < 1e-4:
+                max_abs = 0.16
+            lut = self.build_lut_signed_distance(max_val=max_abs)
+            s_min, s_max = -max_abs, max_abs
+        elif lut_type == "distance_mapping":
+            max_val = max(s_range[1], 0.05)
+            lut = self.build_lut_distance_mapping(max_val=max_val)
+            s_min, s_max = 0.0, max_val
+        else:
+            lut = self.build_lut_gradcam()
+            s_min, s_max = 0.0, 1.0
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly)
+        mapper.SetScalarRange(s_min, s_max)
+        mapper.SetLookupTable(lut)
+        mapper.SetScalarModeToUsePointData()
+        mapper.ScalarVisibilityOn()
+
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        
+        # SPHARM LH canonical orientation transform if needed
+        is_spharm = "spharm" in str(self.current_module_name).lower() or "spharm" in mesh_path.lower()
+        if is_spharm and side.lower() == "left":
+            actor.SetUserTransform(self.get_spharm_lh_transform())
+
+        actor.GetProperty().SetOpacity(opacity)
+        actor.GetProperty().SetSpecular(0.25)
+        actor.GetProperty().SetSpecularPower(15)
+        actor.GetProperty().SetInterpolationToPhong()
+
+        self.mesh_renderer.AddActor(actor)
+        self.scalar_actor = actor
+
+        # Scalar Bar (Colorbar Legend)
+        scalar_bar = vtk.vtkScalarBarActor()
+        scalar_bar.SetLookupTable(lut)
+        scalar_bar.SetTitle(title)
+        scalar_bar.SetNumberOfLabels(5)
+        scalar_bar.SetPosition(0.84, 0.15)
+        scalar_bar.SetWidth(0.12)
+        scalar_bar.SetHeight(0.65)
+        tprop = scalar_bar.GetTitleTextProperty()
+        tprop.SetColor(1.0, 1.0, 1.0)
+        tprop.SetFontSize(11)
+        tprop.BoldOn()
+        lprop = scalar_bar.GetLabelTextProperty()
+        lprop.SetColor(0.9, 0.9, 0.9)
+        lprop.SetFontSize(10)
+        
+        self.mesh_renderer.AddActor(scalar_bar)
+        self.scalar_bar_actor = scalar_bar
+
+        self.reset_3d_camera(side=side)
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+        self.signal_log_message.emit(f"SUCCESS: Rendered {title} on 3D mesh ({side.upper()})")
+
+    def set_patient_overlay(self, mesh_path, visible=True, opacity=0.35, side="left"):
+        if hasattr(self, 'patient_overlay_actor') and self.patient_overlay_actor:
+            self.mesh_renderer.RemoveActor(self.patient_overlay_actor)
+            self.patient_overlay_actor = None
+
+        if not visible or not mesh_path or not os.path.isfile(mesh_path):
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            return
+
+        reader = vtk.vtkPolyDataReader()
+        reader.SetFileName(mesh_path)
+        reader.Update()
+        poly = reader.GetOutput()
+        if poly is None or poly.GetNumberOfPoints() == 0:
+            return
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly)
+        mapper.ScalarVisibilityOff()
+
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        is_spharm = "spharm" in str(self.current_module_name).lower() or "spharm" in mesh_path.lower()
+        if is_spharm and side.lower() == "left":
+            actor.SetUserTransform(self.get_spharm_lh_transform())
+
+        # Patient mesh: Cyan / Teal ghost outline / surface
+        actor.GetProperty().SetColor(0.2, 0.85, 0.95)
+        actor.GetProperty().SetOpacity(opacity)
+        actor.GetProperty().SetSpecular(0.3)
+        actor.GetProperty().SetSpecularPower(20)
+        actor.GetProperty().SetInterpolationToPhong()
+
+        self.mesh_renderer.AddActor(actor)
+        self.patient_overlay_actor = actor
+        self.mesh_vtkWidget.GetRenderWindow().Render()
+        self.signal_log_message.emit(f"Overlaid patient mesh ({os.path.basename(mesh_path)}) in 3D View.")

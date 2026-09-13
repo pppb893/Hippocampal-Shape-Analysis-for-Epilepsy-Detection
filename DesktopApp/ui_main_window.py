@@ -207,10 +207,13 @@ class MainWindow(QMainWindow):
         self.left_panel.signal_log_message.connect(self.log)
         self.right_panel.signal_log_message.connect(self.log)
         self.left_panel.signal_template_toggled.connect(self.right_panel.viewer.set_template_visible)
-        self.right_panel.signal_template_toggled.connect(self.left_panel.set_template_visible)
         self.left_panel.signal_overlay_all_toggled.connect(self.on_overlay_all_toggled)
         self.right_panel.signal_overlay_toggled.connect(self.left_panel.set_overlay_visible)
         self.left_panel.signal_side_changed.connect(self.right_panel.set_side_filter)
+        if hasattr(self.left_panel, 'signal_gradcam_mesh_requested'):
+            self.left_panel.signal_gradcam_mesh_requested.connect(self.right_panel.display_gradcam_mesh)
+            self.left_panel.signal_patient_overlay_requested.connect(self.right_panel.set_patient_overlay)
+            self.left_panel.signal_clear_gradcam_requested.connect(self.right_panel.clear_gradcam_view)
         self.module_combo.currentTextChanged.connect(self.on_module_changed)
 
         # Set initial view mode based on current module selection
@@ -418,7 +421,7 @@ class MainWindow(QMainWindow):
             "FastSurfer Segmentation": True,
             "ICP Registration": True,
             "SPHARM Processing": True,
-            "Result Panel": False,
+            "Result Panel": True,
         }
 
         has_right_ui = modules_with_right_ui.get(module_name, False)
@@ -439,7 +442,7 @@ class MainWindow(QMainWindow):
                 else:
                     self.h_splitter.setSizes([430, 850])
 
-            if module_name in ("ICP Registration", "SPHARM Processing"):
+            if module_name in ("ICP Registration", "SPHARM Processing", "Result Panel"):
                 self.right_panel.set_view_mode("full_3d", module_name)
             elif module_name == "FastSurfer Segmentation":
                 self.right_panel.set_view_mode("quad", module_name)

@@ -170,7 +170,10 @@ class HippocampalPredictor:
         side_dir = os.path.join(self.models_root, side)
         pth_path = os.path.join(side_dir, f"resnet_model_{side}.pth")
         pipeline_path = os.path.join(side_dir, f"pipeline_{side}.joblib")
-        return os.path.isfile(pth_path) and os.path.isfile(pipeline_path)
+        scaler_path = os.path.join(side_dir, f"scaler_{side}.joblib")
+        pls_path = os.path.join(side_dir, f"pls_model_{side}.joblib")
+        has_sklearn = (os.path.isfile(scaler_path) and os.path.isfile(pls_path)) or os.path.isfile(pipeline_path)
+        return os.path.isfile(pth_path) and has_sklearn
 
     def load_model(self, side: str):
         side = side.lower()
@@ -183,27 +186,68 @@ class HippocampalPredictor:
         scaler_path = os.path.join(side_dir, f"scaler_{side}.joblib")
         pls_path = os.path.join(side_dir, f"pls_model_{side}.joblib")
 
-        if not os.path.exists(pipeline_path):
-            raise FileNotFoundError(
-                f"Pipeline artifact not found for side '{side}' at: {pipeline_path}"
-            )
         if not os.path.exists(pth_path):
             raise FileNotFoundError(
                 f"ResNet weights not found for side '{side}' at: {pth_path}"
             )
 
-        # 1. Load pipeline metadata & sklearn objects
-        pipeline_info = joblib.load(pipeline_path)
-        self.pipelines[side] = pipeline_info
-        self.scalers[side] = pipeline_info.get('scaler') or joblib.load(scaler_path)
-        self.pls_models[side] = pipeline_info.get('pls') or joblib.load(pls_path)
+        # 1. Load scaler and PLS-DA safely (prefer standalone sklearn files to avoid torch CUDA deserialization)
+        if os.path.isfile(scaler_path) and os.path.isfile(pls_path):
+            self.scalers[side] = joblib.load(scaler_path)
+            self.pls_models[side] = joblib.load(pls_path)
+        elif os.path.isfile(pipeline_path):
+            try:
+                pipeline_info = joblib.load(pipeline_path)
+                self.pipelines[side] = pipeline_info
+                self.scalers[side] = pipeline_info.get('scaler')
+                self.pls_models[side] = pipeline_info.get('pls')
+            except Exception as e:
+                raise RuntimeError(f"Failed to load pipeline for {side}: {e}")
+        else:
+            raise FileNotFoundError(f"Scaler/PLS files not found for side '{side}' in {side_dir}")
 
-        # 2. Load PyTorch model
+        # 2. Load PyTorch model with safe map_location
         model = ResNet1D().to(self.device)
         state_dict = torch.load(pth_path, map_location=self.device, weights_only=True)
         model.load_state_dict(state_dict)
         model.eval()
         self.models[side] = model
+
+    def get_template_mesh_path(self, side: str = "left") -> str:
+        """Find the canonical SPHARM mean template mesh."""
+        side = side.lower()
+        repo_root = os.path.abspath(os.path.join(self.models_root, "..", ".."))
+        candidates = [
+            os.path.join(repo_root, "Templates", "SPHARM", f"template_spharm_{side}.vtk"),
+            os.path.join(repo_root, "Templates", "SPHARM", f"template_spharm_{side}.ply"),
+            os.path.join(repo_root, "Model", "Output_GradCAM_PLSDA", "All_Augment_tain", side, "PLS1", "PLS1_Mean.vtk"),
+            os.path.join(repo_root, "Model", "Output_GradCAM_PLSDA", "Ds005602", side, "PLS1", "PLS1_Mean.vtk")
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+        return None
+
+    def get_gradcam_mesh_path(self, side: str = "left", component: str = "PLS1", milestone: str = "Mean", cohort: str = "All_Augment_tain") -> str:
+        """Find the pre-computed Grad-CAM / PLS-DA deformation mesh."""
+        side = side.lower()
+        repo_root = os.path.abspath(os.path.join(self.models_root, "..", ".."))
+        cohort_dir = os.path.join(repo_root, "Model", "Output_GradCAM_PLSDA", cohort, side, component)
+        target_file = os.path.join(cohort_dir, f"{component}_{milestone}.vtk")
+        if os.path.isfile(target_file):
+            return target_file
+        
+        # Fallback to any matching component in All_Augment_tain or Ds005602
+        fallback_dirs = [
+            os.path.join(repo_root, "Model", "Output_GradCAM_PLSDA", "All_Augment_tain", side, "PLS1"),
+            os.path.join(repo_root, "Model", "Output_GradCAM_PLSDA", "Ds005602", side, "PLS1")
+        ]
+        for fdir in fallback_dirs:
+            mean_f = os.path.join(fdir, "PLS1_Mean.vtk")
+            if os.path.isfile(mean_f):
+                return mean_f
+
+        return self.get_template_mesh_path(side)
 
     def _prepare_input(self, input_data, side: str) -> pd.DataFrame:
         if isinstance(input_data, str):

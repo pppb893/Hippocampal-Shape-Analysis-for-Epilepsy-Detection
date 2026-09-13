@@ -25,6 +25,9 @@ class LeftPanel(QWidget):
     signal_template_toggled = pyqtSignal(bool)
     signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, filepaths, side_filter
     signal_side_changed = pyqtSignal(str) # "all", "lh", "rh"
+    signal_gradcam_mesh_requested = pyqtSignal(str, str, str, str, str, float) # mesh_path, scalar_mode, lut_type, title, side, opacity
+    signal_patient_overlay_requested = pyqtSignal(str, bool, float, str) # mesh_path, visible, opacity, side
+    signal_clear_gradcam_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -107,6 +110,14 @@ class LeftPanel(QWidget):
         self.icp_panel.signal_side_changed.connect(self.signal_side_changed)
         self.spharm_panel.signal_side_changed.connect(self.signal_side_changed)
 
+        # Forward Result Panel signals
+        if hasattr(self.result_panel, 'signal_gradcam_mesh_requested'):
+            self.result_panel.signal_gradcam_mesh_requested.connect(self.signal_gradcam_mesh_requested)
+            self.result_panel.signal_patient_overlay_requested.connect(self.signal_patient_overlay_requested)
+            self.result_panel.signal_clear_gradcam_requested.connect(self.signal_clear_gradcam_requested)
+        if hasattr(self.result_panel, 'signal_mesh_selected'):
+            self.result_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
+
     def set_template_visible(self, visible: bool):
         self.icp_panel.set_template_visible(visible)
         self.spharm_panel.set_template_visible(visible)
@@ -154,5 +165,14 @@ class LeftPanel(QWidget):
                     self.spharm_panel.spharm_dir_input.setText(spharm_dir)
             self.spharm_panel.update_run_button_state()
             self.spharm_panel.populate_results_table()
+        elif current == self.result_panel:
+            out_dir = self.import_panel.get_output_folder().strip()
+            if out_dir and os.path.isdir(out_dir):
+                spharm_dir = os.path.join(out_dir, "output_SPHARM")
+                if hasattr(self.result_panel, 'spharm_dir_input'):
+                    if not self.result_panel.spharm_dir_input.text().strip() or not os.path.isdir(self.result_panel.spharm_dir_input.text().strip()):
+                        self.result_panel.spharm_dir_input.setText(spharm_dir)
+            if hasattr(self.result_panel, 'on_panel_activated'):
+                self.result_panel.on_panel_activated()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()
