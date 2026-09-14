@@ -144,6 +144,7 @@ class ICPWorker(QThread):
 
         self.signal_finished.emit(overall_success)
 
+IcpWorker = ICPWorker
 
 class IcpPanel(QWidget):
     signal_log_message = pyqtSignal(str)
@@ -582,6 +583,7 @@ class IcpPanel(QWidget):
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -769,7 +771,7 @@ class IcpPanel(QWidget):
             if p_dir and os.path.isdir(p_dir):
                 return os.path.join(p_dir, "output_ICP")
             return os.path.join(resolved_base, "output_ICP")
-        return "D:/output_ICP" if os.path.exists("D:/") else "C:/output_ICP"
+        return ""
 
     def get_source_paths(self):
         return self.resolve_input_folders()
@@ -870,7 +872,7 @@ class IcpPanel(QWidget):
         self.results_table.setRowCount(0)
         self.signal_log_message.emit(f">>> Initiating Groupwise ICP Alignment Pipeline (Output: {target_base})...")
 
-        self.worker = IcpWorker(tasks, adv_params)
+        self.worker = ICPWorker(tasks, adv_params)
         self.worker.signal_log.connect(self.signal_log_message.emit)
         self.worker.signal_finished.connect(self.on_icp_finished)
         self.worker.start()

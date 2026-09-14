@@ -1,72 +1,73 @@
---- LOG START: 2026-09-09 20:01:34.001463 ---
-[20:01:34] [ICP-LOG] --- ICP.py STARTING (rigid groupwise ICP) ---
-[20:01:34] [ICP-LOG] Input  dir: D:/output-program/fastsurfer/right_hippocampus
-[20:01:34] [ICP-LOG] Output dir: D:/output-program/output_ICP/right
-[20:01:34] [ICP-LOG] Total files to process: 5
-[20:01:34] [ICP-LOG] Step A: Loading and meshing label volumes...
-[20:01:34] [ICP-LOG]   Loading [1/5]: rh_sub-00373_hippocampus.nii.gz
-[20:01:34] [ICP-LOG]   Loading [2/5]: rh_sub-04001_hippocampus.nii.gz
-[20:01:34] [ICP-LOG]   Loading [3/5]: rh_sub-04004_hippocampus.nii.gz
-[20:01:34] [ICP-LOG]   Loading [4/5]: rh_sub-04005_hippocampus.nii.gz
-[20:01:34] [ICP-LOG]   Loading [5/5]: rh_sub-04009_hippocampus.nii.gz
-[20:01:34] [ICP-LOG]   Loaded 5 meshes successfully.
-[20:01:34] [ICP-LOG] Step 1: Per-mesh normalization (center + scale to |coord| <= 1)...
-[20:01:34] [ICP-LOG]   Mesh 1: centroid=[22.77493   -1.0023471 -6.1444697], scale=0.052094
-[20:01:34] [ICP-LOG]   Mesh 2: centroid=[22.359333  -7.7312384 -6.3846326], scale=0.048658
-[20:01:34] [ICP-LOG]   Mesh 3: centroid=[ 24.569979 -10.623298 -13.516311], scale=0.046747
-[20:01:34] [ICP-LOG]   Mesh 5: centroid=[ 24.136953    -0.32884106 -13.541322  ], scale=0.046360
-[20:01:34] [ICP-LOG] Step 2: Principal Axis Alignment (PCA)...
-[20:01:34] [ICP-LOG] Step 3: Orientation disambiguation (proper rotations vs reference)...
-[20:01:34] [ICP-LOG]     Pole check (no ref): fat_neg=0.5068, fat_pos=0.4714 -> rotY180
-[20:01:34] [ICP-LOG]   Mesh 1 (reference): REORIENTED
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.11065, 0.09800, 0.04928, 0.07910] -> rotY180
-[20:01:34] [ICP-LOG]   Mesh 2: REORIENTED
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.09736, 0.08765, 0.03833, 0.06704] -> rotY180
-[20:01:34] [ICP-LOG]   Mesh 3: REORIENTED
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.12059, 0.11017, 0.03435, 0.06559] -> rotY180
-[20:01:34] [ICP-LOG]   Mesh 4: REORIENTED
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.04142, 0.06831, 0.10336, 0.09265] -> identity
-[20:01:34] [ICP-LOG]   Mesh 5: OK
-[20:01:34] [ICP-LOG] Step 4: Groupwise ICP (rigid, max 20 rounds, tolerance=5e-05)...
-[20:01:34] [ICP-LOG]   [Groupwise Round 1/20]
-[20:01:34] [ICP-LOG]   [Round 1] Pre-mean orientation re-check...
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.04928, 0.07910, 0.11065, 0.09800] -> identity
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.03833, 0.06704, 0.09736, 0.08765] -> identity
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.03435, 0.06559, 0.12059, 0.11017] -> identity
-[20:01:34] [ICP-LOG]     Pole check: dists=[0.04142, 0.06831, 0.10336, 0.09265] -> identity
-[20:01:34] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
-[20:01:36] [ICP-LOG]   [Round 1] Mean ICP dist to template: 0.035402
-[20:01:36] [ICP-LOG]   [Groupwise Round 2/20]
-[20:01:36] [ICP-LOG]   [Round 2] Pre-mean orientation re-check...
-[20:01:36] [ICP-LOG]     Pole check: dists=[0.04457, 0.07275, 0.11745, 0.09643] -> identity
-[20:01:36] [ICP-LOG]     Pole check: dists=[0.03401, 0.06517, 0.09794, 0.08733] -> identity
-[20:01:36] [ICP-LOG]     Pole check: dists=[0.03460, 0.06837, 0.11983, 0.10851] -> identity
-[20:01:36] [ICP-LOG]     Pole check: dists=[0.03803, 0.06626, 0.10554, 0.09188] -> identity
-[20:01:36] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
-[20:01:37] [ICP-LOG]   [Round 2] Mean ICP dist to template: 0.034289
-[20:01:37] [ICP-LOG]   [Groupwise Round 3/20]
-[20:01:37] [ICP-LOG]   [Round 3] Pre-mean orientation re-check...
-[20:01:37] [ICP-LOG]     Pole check: dists=[0.04479, 0.07496, 0.12026, 0.09977] -> identity
-[20:01:37] [ICP-LOG]     Pole check: dists=[0.03408, 0.06694, 0.09937, 0.08843] -> identity
-[20:01:37] [ICP-LOG]     Pole check: dists=[0.03475, 0.07076, 0.12110, 0.10906] -> identity
-[20:01:37] [ICP-LOG]     Pole check: dists=[0.03838, 0.06725, 0.10768, 0.09297] -> identity
-[20:01:37] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
-[20:01:38] [ICP-LOG]   [Round 3] Mean ICP dist to template: 0.034290
-[20:01:38] [ICP-LOG]   --> Groupwise ICP CONVERGED at round 3 (change: 0.000001 <= 5e-05)
-[20:01:38] [ICP-LOG] Step 5: Global bounding-box normalization (preserving relative physical sizes)...
-[20:01:38] [ICP-LOG]   Physical Union bounds: X[-15.0708,+15.0838]  Y[-8.0694,+6.6824]  Z[-23.6264,+25.2635]
-[20:01:38] [ICP-LOG]   Global center = (+0.0065, -0.6935, +0.8186)
-[20:01:38] [ICP-LOG]   Global scale  = 0.040908  (max physical half-extent 24.4449 -> 1.0)
-[20:01:38] [ICP-LOG]   Union bounds (after) : X[-0.6168,+0.6168]  Y[-0.3017,+0.3017]  Z[-1.0000,+1.0000]
-[20:01:38] [ICP-LOG] Step 6: Saving results...
-[20:01:38] [ICP-LOG]   Saved T_matrices.npy (5 matrices)
-[20:01:38] [ICP-LOG]   Saved icp_convergence_history.json
-[20:01:38] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
-[20:01:38] [ICP-LOG]   Saved mean_shape.ply
-[20:01:38] [ICP-LOG] Saving [1/5]: rh_sub-00373_hippocampus (box=2.6mm, spacing=0.02mm)
-[20:01:38] [ICP-LOG] Saving [2/5]: rh_sub-04001_hippocampus (box=2.6mm, spacing=0.02mm)
-[20:01:38] [ICP-LOG] Saving [3/5]: rh_sub-04004_hippocampus (box=2.6mm, spacing=0.02mm)
-[20:01:39] [ICP-LOG] Saving [4/5]: rh_sub-04005_hippocampus (box=2.6mm, spacing=0.02mm)
-[20:01:39] [ICP-LOG] Saving [5/5]: rh_sub-04009_hippocampus (box=2.6mm, spacing=0.02mm)
-[20:01:39] [ICP-LOG]   All 5 aligned NIfTI saved to: D:/output-program/output_ICP/right\aligned_nifti
-[20:01:39] [ICP-LOG] --- ICP.py FINISHED ---
+--- LOG START: 2026-09-14 19:47:30.660189 ---
+[19:47:30] [ICP-LOG] --- ICP.py STARTING (rigid groupwise ICP) ---
+[19:47:30] [ICP-LOG] Input  dir: D:/output-program/fastsurfer/right_hippocampus
+[19:47:30] [ICP-LOG] Output dir: D:/output-program/output_ICP/right
+[19:47:30] [ICP-LOG] Total files to process: 5
+[19:47:30] [ICP-LOG] Step A: Loading and meshing label volumes...
+[19:47:30] [ICP-LOG]   Loading [1/5]: rh_sub-00373_hippocampus.nii.gz
+[19:47:30] [ICP-LOG]   Loading [2/5]: rh_sub-04001_hippocampus.nii.gz
+[19:47:30] [ICP-LOG]   Loading [3/5]: rh_sub-04004_hippocampus.nii.gz
+[19:47:30] [ICP-LOG]   Loading [4/5]: rh_sub-04005_hippocampus.nii.gz
+[19:47:31] [ICP-LOG]   Loading [5/5]: rh_sub-04009_hippocampus.nii.gz
+[19:47:31] [ICP-LOG]   Loaded 5 meshes successfully.
+[19:47:31] [ICP-LOG] Step 1: Per-mesh normalization (center + scale to |coord| <= 1)...
+[19:47:31] [ICP-LOG]   Mesh 1: centroid=[22.77493   -1.0023471 -6.1444697], scale=0.052094
+[19:47:31] [ICP-LOG]   Mesh 2: centroid=[22.359333  -7.7312384 -6.3846326], scale=0.048658
+[19:47:31] [ICP-LOG]   Mesh 3: centroid=[ 24.569979 -10.623298 -13.516311], scale=0.046747
+[19:47:31] [ICP-LOG]   Mesh 5: centroid=[ 24.136953    -0.32884106 -13.541322  ], scale=0.046360
+[19:47:31] [ICP-LOG] Step 2: Principal Axis Alignment (PCA)...
+[19:47:31] [ICP-LOG] Step 3: Orientation disambiguation (proper rotations vs reference)...
+[19:47:31] [ICP-LOG]     Pole check (no ref): fat_neg=0.5068, fat_pos=0.4714 -> rotY180
+[19:47:31] [ICP-LOG]   Mesh 1 (reference): REORIENTED
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.11065, 0.09800, 0.04928, 0.07910] -> rotY180
+[19:47:31] [ICP-LOG]   Mesh 2: REORIENTED
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.09736, 0.08765, 0.03833, 0.06704] -> rotY180
+[19:47:31] [ICP-LOG]   Mesh 3: REORIENTED
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.12059, 0.11017, 0.03435, 0.06559] -> rotY180
+[19:47:31] [ICP-LOG]   Mesh 4: REORIENTED
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.04142, 0.06831, 0.10336, 0.09265] -> identity
+[19:47:31] [ICP-LOG]   Mesh 5: OK
+[19:47:31] [ICP-LOG] Step 4: Groupwise ICP (rigid, max 20 rounds, tolerance=5e-05)...
+[19:47:31] [ICP-LOG]   [Groupwise Round 1/20]
+[19:47:31] [ICP-LOG]   [Round 1] Pre-mean orientation re-check...
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.04928, 0.07910, 0.11065, 0.09800] -> identity
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.03833, 0.06704, 0.09736, 0.08765] -> identity
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.03435, 0.06559, 0.12059, 0.11017] -> identity
+[19:47:31] [ICP-LOG]     Pole check: dists=[0.04142, 0.06831, 0.10336, 0.09265] -> identity
+[19:47:31] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
+[19:47:32] [ICP-LOG]   [Round 1] Mean ICP dist to template: 0.035402
+[19:47:32] [ICP-LOG]   [Groupwise Round 2/20]
+[19:47:32] [ICP-LOG]   [Round 2] Pre-mean orientation re-check...
+[19:47:32] [ICP-LOG]     Pole check: dists=[0.04457, 0.07275, 0.11745, 0.09643] -> identity
+[19:47:32] [ICP-LOG]     Pole check: dists=[0.03401, 0.06517, 0.09794, 0.08733] -> identity
+[19:47:32] [ICP-LOG]     Pole check: dists=[0.03460, 0.06837, 0.11983, 0.10851] -> identity
+[19:47:32] [ICP-LOG]     Pole check: dists=[0.03803, 0.06626, 0.10554, 0.09188] -> identity
+[19:47:32] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
+[19:47:33] [ICP-LOG]   [Round 2] Mean ICP dist to template: 0.034289
+[19:47:33] [ICP-LOG]   [Groupwise Round 3/20]
+[19:47:33] [ICP-LOG]   [Round 3] Pre-mean orientation re-check...
+[19:47:33] [ICP-LOG]     Pole check: dists=[0.04479, 0.07496, 0.12026, 0.09977] -> identity
+[19:47:33] [ICP-LOG]     Pole check: dists=[0.03408, 0.06694, 0.09937, 0.08843] -> identity
+[19:47:33] [ICP-LOG]     Pole check: dists=[0.03475, 0.07076, 0.12110, 0.10906] -> identity
+[19:47:33] [ICP-LOG]     Pole check: dists=[0.03838, 0.06725, 0.10768, 0.09297] -> identity
+[19:47:33] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
+[19:47:34] [ICP-LOG]   [Round 3] Mean ICP dist to template: 0.034290
+[19:47:34] [ICP-LOG]   --> Groupwise ICP CONVERGED at round 3 (change: 0.000001 <= 5e-05)
+[19:47:34] [ICP-LOG] Step 5: Global bounding-box normalization (preserving relative physical sizes)...
+[19:47:34] [ICP-LOG]   Physical Union bounds: X[-15.0708,+15.0838]  Y[-8.0694,+6.6824]  Z[-23.6264,+25.2635]
+[19:47:34] [ICP-LOG]   Global center = (+0.0065, -0.6935, +0.8186)
+[19:47:34] [ICP-LOG]   Global scale  = 0.040908  (max physical half-extent 24.4449 -> 1.0)
+[19:47:34] [ICP-LOG]   Union bounds (after) : X[-0.6168,+0.6168]  Y[-0.3017,+0.3017]  Z[-1.0000,+1.0000]
+[19:47:34] [ICP-LOG] Step 6: Saving results...
+[19:47:34] [ICP-LOG]   Saved T_matrices.npy (5 matrices)
+[19:47:34] [ICP-LOG]   Saved icp_convergence_history.json
+[19:47:34] [ICP-LOG]     compute_mean_poly: NN-matching, point counts 2802-3370, N=5
+[19:47:34] [ICP-LOG]   Saved mean_shape.ply
+[19:47:34] [ICP-LOG]   Saved 5 aligned meshes to: D:/output-program/output_ICP/right\aligned_meshes
+[19:47:34] [ICP-LOG] Saving [1/5]: rh_sub-00373_hippocampus (box=2.6mm, spacing=0.02mm)
+[19:47:34] [ICP-LOG] Saving [2/5]: rh_sub-04001_hippocampus (box=2.6mm, spacing=0.02mm)
+[19:47:35] [ICP-LOG] Saving [3/5]: rh_sub-04004_hippocampus (box=2.6mm, spacing=0.02mm)
+[19:47:35] [ICP-LOG] Saving [4/5]: rh_sub-04005_hippocampus (box=2.6mm, spacing=0.02mm)
+[19:47:35] [ICP-LOG] Saving [5/5]: rh_sub-04009_hippocampus (box=2.6mm, spacing=0.02mm)
+[19:47:35] [ICP-LOG]   All 5 aligned NIfTI saved to: D:/output-program/output_ICP/right\aligned_nifti
+[19:47:35] [ICP-LOG] --- ICP.py FINISHED ---

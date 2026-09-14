@@ -188,6 +188,10 @@ def main():
         print(f"[ERROR] Not a folder: {folder}")
         sys.exit(1)
 
+    spharm_sub = os.path.join(folder, "spharm_results")
+    if os.path.isdir(spharm_sub) and glob.glob(os.path.join(spharm_sub, "*.vtk")):
+        folder = spharm_sub
+
     old_aligned_files = glob.glob(os.path.join(folder, "*_SPHARM_realigned.vtk"))
     if old_aligned_files:
         print(f"Cleaning up {len(old_aligned_files)} old realigned files...")

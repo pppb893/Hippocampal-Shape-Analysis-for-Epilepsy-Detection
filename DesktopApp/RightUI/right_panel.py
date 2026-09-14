@@ -8,6 +8,8 @@ class RightPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_template_toggled = pyqtSignal(bool)
     signal_overlay_toggled = pyqtSignal(bool)
+    signal_step_sd = pyqtSignal(float)
+    signal_reset_sd = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -24,6 +26,8 @@ class RightPanel(QWidget):
         self.viewer.signal_log_message.connect(self.signal_log_message)
         self.viewer.signal_template_toggled.connect(self.signal_template_toggled)
         self.viewer.signal_overlay_toggled.connect(self.signal_overlay_toggled)
+        self.viewer.signal_step_sd.connect(self.signal_step_sd.emit)
+        self.viewer.signal_reset_sd.connect(self.signal_reset_sd.emit)
 
     def set_view_mode(self, mode: str, module_name: str = ""):
         self.viewer.set_view_mode(mode, module_name)
@@ -33,6 +37,9 @@ class RightPanel(QWidget):
 
     def set_side_filter(self, side_filter: str):
         self.viewer.set_side_filter(side_filter)
+
+    def set_diagnostic_info(self, info_html: str):
+        self.viewer.set_diagnostic_info(info_html)
 
     def display_all_meshes(self, filepaths, side_filter="all"):
         self.signal_log_message.emit(f"Superimposing {len(filepaths)} meshes in 3D View (Filter: {side_filter.upper()})")
@@ -175,6 +182,9 @@ class RightPanel(QWidget):
     def set_patient_overlay(self, mesh_path, visible=True, opacity=0.35, side="left"):
         self.viewer.set_patient_overlay(mesh_path, visible=visible, opacity=opacity, side=side)
 
-    def clear_gradcam_view(self):
-        self.viewer.clear_gradcam_view()
+    def clear_gradcam_view(self, render_now=True):
+        self.viewer.clear_gradcam_view(render_now=render_now)
+
+    def reset_3d_camera(self, side=None):
+        self.viewer.reset_3d_camera(side=side)
 

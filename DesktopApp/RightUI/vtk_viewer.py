@@ -1,5 +1,6 @@
 import vtk
 import os
+import numpy as np
 from PyQt6.QtWidgets import (QWidget, QGridLayout, QFrame, QVBoxLayout, QSlider, 
                              QHBoxLayout, QPushButton, QLabel, QCheckBox)
 from PyQt6.QtCore import pyqtSignal, Qt
@@ -46,6 +47,8 @@ class VtkViewer(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_template_toggled = pyqtSignal(bool)
     signal_overlay_toggled = pyqtSignal(bool)
+    signal_step_sd = pyqtSignal(float)
+    signal_reset_sd = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,6 +58,7 @@ class VtkViewer(QWidget):
         self.current_module_name = ""
         self.current_mesh_path = None
         self.current_side_filter = "all"
+        self.current_side = "left"
         self.template_actor = None
         self.template_actors = []
         self.mesh_actor = None
@@ -207,6 +211,7 @@ class VtkViewer(QWidget):
         
         self.mesh_vtkWidget = QVTKRenderWindowInteractor(self.mesh_frame)
         self.mesh_vtkWidget.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+        self.mesh_vtkWidget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         layout_mesh.addWidget(self.mesh_vtkWidget)
         
         self.mesh_renderer = vtk.vtkRenderer()
@@ -214,6 +219,13 @@ class VtkViewer(QWidget):
         self.mesh_renderer.SetBackground(0.741, 0.749, 0.902)
         self.mesh_renderer.SetBackground2(0.459, 0.475, 0.745)
         self.mesh_vtkWidget.GetRenderWindow().AddRenderer(self.mesh_renderer)
+        self.setup_3d_lighting()
+        try:
+            iren = self.mesh_vtkWidget.GetRenderWindow().GetInteractor()
+            iren.AddObserver("KeyPressEvent", self._on_mesh_key_press)
+            iren.AddObserver("LeftButtonPressEvent", self._on_mesh_mouse_press)
+        except Exception:
+            pass
         
         # 3D Orthogonal Slice Plane Actors & Outline Borders
         self.axial_3d_actor = vtk.vtkImageActor()
@@ -451,13 +463,21 @@ class VtkViewer(QWidget):
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
         self.clear_multi_mesh_actors()
+        self.clear_gradcam_view(render_now=False)
         self.current_mesh_path = None
+        self.current_diagnostic_info = None
         self.is_overlay_active = False
         self.overlay_cb.blockSignals(True)
         self.overlay_cb.setChecked(False)
         self.overlay_cb.blockSignals(False)
         self.update_legend()
         self.mesh_vtkWidget.GetRenderWindow().Render()
+
+    def set_diagnostic_info(self, text: str):
+        self.current_diagnostic_info = text
+        self.update_legend()
+        if hasattr(self, 'mesh_vtkWidget'):
+            self.mesh_vtkWidget.GetRenderWindow().Render()
 
     def set_view_mode(self, mode: str, module_name: str = ""):
         """
@@ -469,12 +489,13 @@ class VtkViewer(QWidget):
         self.view_mode = mode
         self.current_module_name = module_name
 
-        # When switching module, always clear previous module's patient meshes
+        # When switching module, always clear previous module's patient meshes and gradcam actors
         if prev_module and prev_module != module_name:
             if self.mesh_actor is not None:
                 self.mesh_renderer.RemoveActor(self.mesh_actor)
                 self.mesh_actor = None
             self.clear_multi_mesh_actors()
+            self.clear_gradcam_view(render_now=False)
             self.current_mesh_path = None
             self.is_overlay_active = False
             self.overlay_cb.blockSignals(True)
@@ -498,15 +519,31 @@ class VtkViewer(QWidget):
             # Hide 3D slice plane buttons on hidden slice frames
             self.set_3d_plane_buttons_visible(False)
             self.mesh_max_btn.setVisible(False)
-            self.template_cb.setVisible(True)
-            self.overlay_cb.setVisible(True)
+            
+            is_result = ("result" in str(module_name).lower()) or ("main" in str(module_name).lower())
+            self.template_cb.setVisible(not is_result)
+            self.overlay_cb.setVisible(not is_result)
+            if is_result:
+                self.template_cb.blockSignals(True)
+                self.template_cb.setChecked(False)
+                self.template_cb.blockSignals(False)
+                self.clear_template_actors()
+                self.overlay_cb.blockSignals(True)
+                self.overlay_cb.setChecked(False)
+                self.overlay_cb.blockSignals(False)
+                self.clear_multi_mesh_actors()
             
             # Update title
-            disp = f"3D View — {module_name}" if module_name else "3D View"
+            if "main" in str(module_name).lower():
+                disp = "3D View — SPHARM Shape & Diagnosis"
+            elif module_name:
+                disp = f"3D View — {module_name}"
+            else:
+                disp = "3D View"
             self.mesh_title_lbl.setText(disp)
             
-            # If template checkbox was checked, refresh overlay for this module
-            if self.template_cb.isChecked():
+            # If template checkbox was checked, refresh overlay for this module (ICP/SPHARM)
+            if not is_result and self.template_cb.isChecked():
                 self.update_template_overlay()
                 
             self.reset_3d_camera()
@@ -656,8 +693,9 @@ class VtkViewer(QWidget):
         self.overlay_cb.blockSignals(False)
 
     def get_spharm_lh_transform(self):
-        """Precomputed Kabsch rigid transform from template_spharm_left to template_spharm_right.
-        Ensures LH SPHARM meshes and template face the exact same canonical upright C-crescent orientation as RH."""
+        """Precomputed Kabsch rigid transform from template_spharm_left to template_spharm_right,
+        with 180° view rotation around the horizontal viewing axis so LH SPHARM meshes face
+        the canonical upright C-crescent orientation matching RH without altering actual file coordinates."""
         tr = vtk.vtkTransform()
         tr.PostMultiply()
         tr.Translate(0.00260724, 0.05516517, 0.10794069)
@@ -672,31 +710,84 @@ class VtkViewer(QWidget):
                 mat.SetElement(i, j, R[i][j])
         tr.Concatenate(mat)
         tr.Translate(-0.05795671, 0.04367124, -0.06888033)
+
+        # 180° rotation around horizontal view axis to correct upside-down & backward orientation
+        tr.Translate(-0.039, -0.093, -0.001)
+        tr.RotateWXYZ(180, 0.806, 0.0, 0.592)
+        tr.Translate(0.039, 0.093, 0.001)
         return tr
+
+    def _on_mesh_key_press(self, obj, event):
+        try:
+            key = (self.mesh_vtkWidget.GetKeySym() or "").lower()
+            is_result = ("result" in str(self.current_module_name).lower()) or (getattr(self, 'scalar_actor', None) is not None)
+            if is_result:
+                if key in ("right", "bracketright", "period"):
+                    self.signal_step_sd.emit(0.1)
+                elif key in ("left", "bracketleft", "comma"):
+                    self.signal_step_sd.emit(-0.1)
+                elif key in ("0", "r", "home", "space"):
+                    self.signal_reset_sd.emit()
+        except Exception:
+            pass
+
+    def _on_mesh_mouse_press(self, obj, event):
+        try:
+            self.mesh_vtkWidget.setFocus()
+        except Exception:
+            pass
+
+    def setup_3d_lighting(self):
+        """Balanced lighting matching view_gradcam_plsda_top3.py."""
+        self.mesh_renderer.RemoveAllLights()
+
+        key_light = vtk.vtkLight()
+        key_light.SetLightTypeToCameraLight()
+        key_light.SetPosition(0.3, 0.5, 1.0)
+        key_light.SetIntensity(0.9)
+        self.mesh_renderer.AddLight(key_light)
+
+        fill_light = vtk.vtkLight()
+        fill_light.SetLightTypeToCameraLight()
+        fill_light.SetPosition(-0.4, -0.3, 0.7)
+        fill_light.SetIntensity(0.4)
+        self.mesh_renderer.AddLight(fill_light)
 
     def reset_3d_camera(self, side=None):
         """Sets canonical viewing direction without modifying underlying mesh data.
-        For SPHARM meshes, orients camera to the upright vertical crescent angle (matching auto_rh_front).
-        Non-SPHARM meshes (e.g. ICP) maintain their standard coordinate view."""
+        For Result Panel Grad-CAM: Upright vertical crescent matching view_gradcam_plsda_top3.py.
+        For SPHARM meshes: orients camera to the upright vertical crescent angle (matching auto_rh_front).
+        Non-SPHARM meshes (e.g. ICP): maintain their standard coordinate view."""
         self.mesh_renderer.ResetCamera()
         camera = self.mesh_renderer.GetActiveCamera()
         fp = camera.GetFocalPoint()
         dist = camera.GetDistance()
         camera.SetFocalPoint(fp[0], fp[1], fp[2])
 
+        is_result = ("result" in str(self.current_module_name).lower()) or (getattr(self, 'scalar_actor', None) is not None)
         is_spharm = ("spharm" in str(self.current_module_name).lower()) or (
             self.current_mesh_path and "spharm" in self.current_mesh_path.lower()
         ) or (
             self.multi_mesh_paths and any("spharm" in p.lower() for p in self.multi_mesh_paths[:3])
         )
 
-        if is_spharm:
-            # SPHARM: Left & Right meshes and templates are visually unified in orientation.
-            # Upright canonical vertical crescent angle (matching auto_rh_front).
+        resolved_side = str(side or getattr(self, 'current_side', None) or getattr(self, 'current_side_filter', None) or "left").lower()
+
+        if is_result:
+            # Result Panel Grad-CAM: Canonical upright vertical crescent view matching view_gradcam_plsda_top3.py
+            camera.SetParallelProjection(True)
+            if "right" in resolved_side or "rh" in resolved_side:
+                camera.SetPosition(fp[0], fp[1], fp[2] - dist)
+                camera.SetViewUp(1.0, 0.0, 0.0)
+            else:
+                camera.SetPosition(fp[0], fp[1], fp[2] + dist)
+                camera.SetViewUp(-1.0, 0.0, 0.0)
+        elif is_spharm:
+            camera.SetParallelProjection(False)
             camera.SetPosition(fp[0], fp[1] - dist, fp[2])
             camera.SetViewUp(-0.592, 0.0, 0.806)
         else:
-            # Non-SPHARM (ICP and others): DO NOT TOUCH! Left untouched as requested by user.
+            camera.SetParallelProjection(False)
             camera.SetPosition(fp[0], fp[1] - dist, fp[2])
             camera.SetViewUp(0.0, 0.0, 1.0)
 
@@ -785,11 +876,12 @@ class VtkViewer(QWidget):
             self.mesh_vtkWidget.GetRenderWindow().Render()
             return
 
-        # Clear existing single mesh actor
+        # Clear existing single mesh actor and gradcam
         if self.mesh_actor is not None:
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
         self.clear_multi_mesh_actors()
+        self.clear_gradcam_view(render_now=False)
         self.is_overlay_active = True
         self.multi_mesh_paths = filepaths
 
@@ -904,6 +996,9 @@ class VtkViewer(QWidget):
                     tmpl_name = f"{mod_type} Right Mean"
             parts.append(f'<span style="color: #f1c40f; font-weight: bold;">&#9679; Template: {tmpl_name} (Ghost)</span>')
             
+        if getattr(self, 'current_diagnostic_info', None):
+            parts.append(self.current_diagnostic_info)
+            
         if parts:
             self.mesh_legend_lbl.setText("  |  ".join(parts))
             self.mesh_legend_lbl.setVisible(True)
@@ -1010,6 +1105,7 @@ class VtkViewer(QWidget):
         if self.mesh_actor is not None:
             self.mesh_renderer.RemoveActor(self.mesh_actor)
             self.mesh_actor = None
+        self.clear_gradcam_view(render_now=False)
 
         if self.multi_mesh_actors:
             self.clear_multi_mesh_actors()
@@ -1283,21 +1379,21 @@ class VtkViewer(QWidget):
     # Grad-CAM and Deformation Scalar Heatmap Engine
     # =========================================================================
     def build_lut_gradcam(self):
-        """Inferno / Hot colormap (0.0 to 1.0) for Grad-CAM attention."""
+        """Jet colormap matching view_gradcam_plsda_top3.py (0.0 Blue to 1.0 Red)."""
         lut = vtk.vtkLookupTable()
         lut.SetNumberOfTableValues(256)
         lut.SetRange(0.0, 1.0)
         lut.Build()
         for i in range(256):
             t = i / 255.0
-            r = np.clip(t * 1.5, 0.0, 1.0)
-            g = np.clip((t - 0.3) * 1.5, 0.0, 1.0)
-            b = np.clip((t - 0.7) * 3.0, 0.0, 1.0)
+            r = np.clip(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0)
+            g = np.clip(1.5 - abs(4.0 * t - 2.0), 0.0, 1.0)
+            b = np.clip(1.5 - abs(4.0 * t - 1.0), 0.0, 1.0)
             lut.SetTableValue(i, float(r), float(g), float(b), 1.0)
         return lut
 
     def build_lut_signed_distance(self, max_val=0.16):
-        """Diverging Blue-White-Red colormap (-max to +max mm) for inward atrophy vs expansion."""
+        """Diverging Blue-White-Red colormap (-max to +max mm) matching view_gradcam_plsda_top3.py."""
         lut = vtk.vtkLookupTable()
         lut.SetNumberOfTableValues(256)
         lut.SetRange(-max_val, max_val)
@@ -1314,7 +1410,7 @@ class VtkViewer(QWidget):
         return lut
 
     def build_lut_distance_mapping(self, max_val=0.16):
-        """Jet / Turbo colormap for positive displacement magnitude (0 to max mm)."""
+        """Jet colormap matching view_gradcam_plsda_top3.py (0.0 Blue to max mm Red)."""
         lut = vtk.vtkLookupTable()
         lut.SetNumberOfTableValues(256)
         lut.SetRange(0.0, max_val)
@@ -1327,23 +1423,23 @@ class VtkViewer(QWidget):
             lut.SetTableValue(i, float(r), float(g), float(b), 1.0)
         return lut
 
-    def clear_gradcam_view(self):
+    def clear_gradcam_view(self, render_now=True):
         if hasattr(self, 'scalar_actor') and self.scalar_actor:
             self.mesh_renderer.RemoveActor(self.scalar_actor)
             self.scalar_actor = None
+        if hasattr(self, 'scalar_mapper'):
+            self.scalar_mapper = None
         if hasattr(self, 'scalar_bar_actor') and self.scalar_bar_actor:
             self.mesh_renderer.RemoveActor(self.scalar_bar_actor)
             self.scalar_bar_actor = None
         if hasattr(self, 'patient_overlay_actor') and self.patient_overlay_actor:
             self.mesh_renderer.RemoveActor(self.patient_overlay_actor)
             self.patient_overlay_actor = None
-        self.mesh_vtkWidget.GetRenderWindow().Render()
+        self._last_gradcam_side = None
+        if render_now:
+            self.mesh_vtkWidget.GetRenderWindow().Render()
 
-    def display_gradcam_mesh(self, mesh_path, scalar_mode="GradCAM_Importance", lut_type="gradcam", title="Grad-CAM Attention", side="left", opacity=1.0):
-        self.clear_gradcam_view()
-        self.clear_all_patient_meshes()
-        self.clear_template_actors()
-
+    def display_gradcam_mesh(self, mesh_path, scalar_mode="DistanceMapping", lut_type="distance_mapping", title="Distance Mapping", side="left", opacity=1.0):
         if not mesh_path or not os.path.isfile(mesh_path):
             self.signal_log_message.emit(f"[ERROR] Mesh file not found: {mesh_path}")
             return
@@ -1367,55 +1463,89 @@ class VtkViewer(QWidget):
                 first_name = pdata.GetArrayName(0)
                 pdata.SetActiveScalars(first_name)
                 s_range = pdata.GetScalars().GetRange()
+                scalar_mode = first_name
             else:
                 s_range = (0.0, 1.0)
 
         # Build appropriate LUT based on mode
         if lut_type == "signed_distance":
-            max_abs = max(abs(s_range[0]), abs(s_range[1]))
-            if max_abs < 1e-4:
-                max_abs = 0.16
+            max_abs = max(0.16, abs(s_range[0]), abs(s_range[1]))
             lut = self.build_lut_signed_distance(max_val=max_abs)
             s_min, s_max = -max_abs, max_abs
-        elif lut_type == "distance_mapping":
-            max_val = max(s_range[1], 0.05)
+            bar_title = "mm"
+        elif lut_type == "distance_mapping" or "Distance" in scalar_mode:
+            max_val = max(0.16, s_range[1])
             lut = self.build_lut_distance_mapping(max_val=max_val)
             s_min, s_max = 0.0, max_val
+            bar_title = "mm"
         else:
             lut = self.build_lut_gradcam()
             s_min, s_max = 0.0, 1.0
+            bar_title = "Score"
+
+        # Update title text on top bar
+        self.mesh_title_lbl.setText(f"3D View — {title}")
+
+        # Check if we can perform smooth in-place update (SAME side, existing actors)
+        is_same_side = (getattr(self, '_last_gradcam_side', None) == side)
+        can_update_in_place = (
+            hasattr(self, 'scalar_actor') and self.scalar_actor is not None and
+            hasattr(self, 'scalar_mapper') and self.scalar_mapper is not None and
+            hasattr(self, 'scalar_bar_actor') and self.scalar_bar_actor is not None and
+            is_same_side
+        )
+
+        if can_update_in_place:
+            self.scalar_mapper.SetInputData(poly)
+            self.scalar_mapper.SetScalarRange(s_min, s_max)
+            self.scalar_mapper.SetLookupTable(lut)
+            self.scalar_mapper.SelectColorArray(scalar_mode)
+            self.scalar_bar_actor.SetLookupTable(lut)
+            self.scalar_bar_actor.SetTitle(bar_title)
+            self.mesh_vtkWidget.GetRenderWindow().Render()
+            return
+
+        # Otherwise full setup (first time or when switching hemisphere side)
+        self.clear_gradcam_view(render_now=False)
+        self.clear_all_patient_meshes()
+        self.clear_template_actors()
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(poly)
         mapper.SetScalarRange(s_min, s_max)
         mapper.SetLookupTable(lut)
         mapper.SetScalarModeToUsePointData()
+        mapper.SelectColorArray(scalar_mode)
         mapper.ScalarVisibilityOn()
 
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         
         # SPHARM LH canonical orientation transform if needed
-        is_spharm = "spharm" in str(self.current_module_name).lower() or "spharm" in mesh_path.lower()
+        is_spharm = "spharm" in str(self.current_module_name).lower()
         if is_spharm and side.lower() == "left":
             actor.SetUserTransform(self.get_spharm_lh_transform())
 
         actor.GetProperty().SetOpacity(opacity)
+        actor.GetProperty().SetAmbient(0.20)
+        actor.GetProperty().SetDiffuse(0.80)
         actor.GetProperty().SetSpecular(0.25)
-        actor.GetProperty().SetSpecularPower(15)
-        actor.GetProperty().SetInterpolationToPhong()
+        actor.GetProperty().SetSpecularPower(30)
+        actor.GetProperty().SetInterpolationToGouraud()
 
         self.mesh_renderer.AddActor(actor)
         self.scalar_actor = actor
+        self.scalar_mapper = mapper
+        self._last_gradcam_side = side
 
         # Scalar Bar (Colorbar Legend)
         scalar_bar = vtk.vtkScalarBarActor()
         scalar_bar.SetLookupTable(lut)
-        scalar_bar.SetTitle(title)
+        scalar_bar.SetTitle(bar_title)
         scalar_bar.SetNumberOfLabels(5)
-        scalar_bar.SetPosition(0.84, 0.15)
-        scalar_bar.SetWidth(0.12)
-        scalar_bar.SetHeight(0.65)
+        scalar_bar.SetPosition(0.86, 0.12)
+        scalar_bar.SetWidth(0.11)
+        scalar_bar.SetHeight(0.55)
         tprop = scalar_bar.GetTitleTextProperty()
         tprop.SetColor(1.0, 1.0, 1.0)
         tprop.SetFontSize(11)
@@ -1453,7 +1583,7 @@ class VtkViewer(QWidget):
 
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
-        is_spharm = "spharm" in str(self.current_module_name).lower() or "spharm" in mesh_path.lower()
+        is_spharm = "spharm" in str(self.current_module_name).lower()
         if is_spharm and side.lower() == "left":
             actor.SetUserTransform(self.get_spharm_lh_transform())
 

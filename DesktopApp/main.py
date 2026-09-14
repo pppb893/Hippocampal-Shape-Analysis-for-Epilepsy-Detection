@@ -2,6 +2,17 @@ import sys
 import os
 import time
 import multiprocessing
+import warnings
+
+# Suppress harmless scikit-learn unpickle version and feature name warnings globally
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except Exception:
+    pass
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+warnings.filterwarnings("ignore", message=".*X does not have valid feature names.*")
+warnings.filterwarnings("ignore", message=".*InconsistentVersionWarning.*")
 
 # CLI Runner Dispatch: Allows the frozen .exe to execute Python sub-scripts
 # without requiring Python to be installed on the host machine.

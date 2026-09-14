@@ -1,11 +1,21 @@
 import os
 import re
+import warnings
 import joblib
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Suppress harmless scikit-learn unpickle version and feature name warnings
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except Exception:
+    pass
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+warnings.filterwarnings("ignore", message=".*X does not have valid feature names.*")
 
 # =============================================================================
 # ResNet1D Neural Network Architecture (Matching Training Model)
@@ -192,19 +202,21 @@ class HippocampalPredictor:
             )
 
         # 1. Load scaler and PLS-DA safely (prefer standalone sklearn files to avoid torch CUDA deserialization)
-        if os.path.isfile(scaler_path) and os.path.isfile(pls_path):
-            self.scalers[side] = joblib.load(scaler_path)
-            self.pls_models[side] = joblib.load(pls_path)
-        elif os.path.isfile(pipeline_path):
-            try:
-                pipeline_info = joblib.load(pipeline_path)
-                self.pipelines[side] = pipeline_info
-                self.scalers[side] = pipeline_info.get('scaler')
-                self.pls_models[side] = pipeline_info.get('pls')
-            except Exception as e:
-                raise RuntimeError(f"Failed to load pipeline for {side}: {e}")
-        else:
-            raise FileNotFoundError(f"Scaler/PLS files not found for side '{side}' in {side_dir}")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if os.path.isfile(scaler_path) and os.path.isfile(pls_path):
+                self.scalers[side] = joblib.load(scaler_path)
+                self.pls_models[side] = joblib.load(pls_path)
+            elif os.path.isfile(pipeline_path):
+                try:
+                    pipeline_info = joblib.load(pipeline_path)
+                    self.pipelines[side] = pipeline_info
+                    self.scalers[side] = pipeline_info.get('scaler')
+                    self.pls_models[side] = pipeline_info.get('pls')
+                except Exception as e:
+                    raise RuntimeError(f"Failed to load pipeline for {side}: {e}")
+            else:
+                raise FileNotFoundError(f"Scaler/PLS files not found for side '{side}' in {side_dir}")
 
         # 2. Load PyTorch model with safe map_location
         model = ResNet1D().to(self.device)
@@ -274,6 +286,13 @@ class HippocampalPredictor:
         else:
             raise TypeError(f"Unsupported input type for prediction: {type(input_data)}")
 
+        # Match scaler feature names if available to eliminate feature name mismatch warning
+        scaler = self.scalers.get(side)
+        if scaler is not None and hasattr(scaler, 'feature_names_in_'):
+            expected_names = scaler.feature_names_in_
+            if arr.shape[1] == len(expected_names):
+                return pd.DataFrame(arr, columns=expected_names)
+
         feat_names = self.pipelines.get(side, {}).get('feature_names')
         if feat_names and arr.shape[1] == len(feat_names):
             return pd.DataFrame(arr, columns=feat_names)
@@ -290,13 +309,13 @@ class HippocampalPredictor:
 
         X_df = self._prepare_input(input_data, side)
         
-        # 1. StandardScaler Transform
+        # 1. StandardScaler Transform & 2. PLS-DA Transform
         scaler = self.scalers[side]
-        X_sc = scaler.transform(X_df)
-
-        # 2. PLS-DA Transform
         pls = self.pls_models[side]
-        X_pls = pls.transform(X_sc)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            X_sc = scaler.transform(X_df)
+            X_pls = pls.transform(X_sc)
 
         # 3. ResNet1D Inference
         model = self.models[side]

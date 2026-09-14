@@ -28,6 +28,7 @@ class LeftPanel(QWidget):
     signal_gradcam_mesh_requested = pyqtSignal(str, str, str, str, str, float) # mesh_path, scalar_mode, lut_type, title, side, opacity
     signal_patient_overlay_requested = pyqtSignal(str, bool, float, str) # mesh_path, visible, opacity, side
     signal_clear_gradcam_requested = pyqtSignal()
+    signal_diagnostic_info = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,7 +63,8 @@ class LeftPanel(QWidget):
             import_panel=self.import_panel,
             fastsurfer_panel=self.fastsurfer_panel,
             icp_panel=self.icp_panel,
-            spharm_panel=self.spharm_panel
+            spharm_panel=self.spharm_panel,
+            result_panel=self.result_panel
         )
 
         # Add to stacked widget (Main Panel first, Result Panel last)
@@ -84,6 +86,12 @@ class LeftPanel(QWidget):
             self.fastsurfer_panel.update_run_button_state()
             self.icp_panel.update_run_button_state()
             self.spharm_panel.update_run_button_state()
+            if hasattr(self.result_panel, 'on_spharm_dir_changed'):
+                sph_d = os.path.join(out_dir, "output_SPHARM")
+                res_d = os.path.join(out_dir, "output_Result")
+                self.result_panel.spharm_dir_input.setText(sph_d)
+                self.result_panel.result_dir_input.setText(res_d)
+                self.result_panel.on_spharm_dir_changed()
             
         self.import_panel.signal_directories_changed.connect(on_directories_changed)
 
@@ -92,8 +100,23 @@ class LeftPanel(QWidget):
         self.fastsurfer_panel.signal_fastsurfer_completed.connect(self.icp_panel.update_run_button_state)
         # ICP completes -> SPHARM automatically ready to run using ICP aligned meshes
         self.icp_panel.signal_icp_completed.connect(self.spharm_panel.update_run_button_state)
+        # SPHARM completes -> Result Panel ready to evaluate SPHARM output
+        def on_spharm_finished():
+            self.spharm_panel.update_run_button_state()
+            out_d = self.import_panel.get_output_folder() if self.import_panel else ""
+            if out_d:
+                sph_d = os.path.join(out_d, "output_SPHARM")
+                res_d = os.path.join(out_d, "output_Result")
+                self.result_panel.spharm_dir_input.setText(sph_d)
+                self.result_panel.result_dir_input.setText(res_d)
+                self.result_panel.on_spharm_dir_changed()
+        self.spharm_panel.signal_spharm_completed.connect(on_spharm_finished)
 
-        # Forward mesh selection from FastSurfer, ICP, and SPHARM to right panel
+        # Forward mesh selection from Main Panel, FastSurfer, ICP, and SPHARM to right panel
+        if hasattr(self.main_panel, 'signal_mesh_selected'):
+            self.main_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
+        if hasattr(self.main_panel, 'signal_diagnostic_info'):
+            self.main_panel.signal_diagnostic_info.connect(self.signal_diagnostic_info)
         self.fastsurfer_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.icp_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.spharm_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
@@ -172,6 +195,10 @@ class LeftPanel(QWidget):
                 if hasattr(self.result_panel, 'spharm_dir_input'):
                     if not self.result_panel.spharm_dir_input.text().strip() or not os.path.isdir(self.result_panel.spharm_dir_input.text().strip()):
                         self.result_panel.spharm_dir_input.setText(spharm_dir)
+                res_dir = os.path.join(out_dir, "output_Result")
+                if hasattr(self.result_panel, 'result_dir_input'):
+                    if not self.result_panel.result_dir_input.text().strip():
+                        self.result_panel.result_dir_input.setText(res_dir)
             if hasattr(self.result_panel, 'on_panel_activated'):
                 self.result_panel.on_panel_activated()
         self.stacked_widget.updateGeometry()

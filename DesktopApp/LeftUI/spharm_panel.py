@@ -57,6 +57,28 @@ def find_slicer_salt_exe():
     for c in local_candidates:
         if os.path.isfile(c):
             return c
+
+    candidates = glob.glob(r"C:\Program Files\SlicerSALT*\SlicerSALT.exe")
+    if candidates:
+        return candidates[0]
+
+    candidates_x86 = glob.glob(r"C:\Program Files (x86)\SlicerSALT*\SlicerSALT.exe")
+    if candidates_x86:
+        return candidates_x86[0]
+
+    for user_dir in glob.glob(r"C:\Users\*"):
+        user_cands = [
+            os.path.join(user_dir, "AppData", "Local", "NA-MIC", "SlicerSALT 6.0.0", "SlicerSALT.exe"),
+            os.path.join(user_dir, "AppData", "Local", "Programs", "SlicerSALT 6.0.0", "SlicerSALT.exe"),
+        ]
+        for uc in user_cands:
+            if os.path.isfile(uc):
+                return uc
+
+    default_salt = r"C:\Program Files\SlicerSALT 6.0.0\SlicerSALT.exe"
+    if os.path.isfile(default_salt):
+        return default_salt
+
     return None
 
 class SPHARMWorker(QThread):
@@ -101,7 +123,7 @@ class SPHARMWorker(QThread):
                 "--output_dir", out_dir,
                 "--num_iterations", str(self.adv_params.get("num_iter", 1000)),
                 "--subdiv_level", str(self.adv_params.get("subdiv", 10)),
-                "--spharm_degree", str(self.adv_params.get("deg", 12))
+                "--spharm_degree", str(self.adv_params.get("degree", self.adv_params.get("deg", 12)))
             ]
             
             # Use official template from Templates/SPHARM if present
@@ -137,10 +159,11 @@ class SPHARMWorker(QThread):
                 # Step 2: Post-process Procrustes Re-alignment (Self-alignment against cohort mean)
                 if os.path.isfile(realign_script):
                     self.signal_log.emit(f">>> Running Procrustes Re-alignment for [{side_name.upper()}]...")
+                    realign_target = os.path.join(out_dir, "spharm_results") if os.path.isdir(os.path.join(out_dir, "spharm_results")) else out_dir
                     realign_cmd = [
                         sys.executable,
                         realign_script,
-                        "--spharm_dir", out_dir,
+                        "--spharm_dir", realign_target,
                         "--tolerance", str(self.adv_params.get("tol", 0.0001)),
                         "--max_iterations", str(self.adv_params.get("max_iter", 50))
                     ]
@@ -168,6 +191,7 @@ class SPHARMWorker(QThread):
 
         self.signal_finished.emit(overall_success)
 
+SpharmWorker = SPHARMWorker
 
 class SpharmPanel(QWidget):
     signal_log_message = pyqtSignal(str)
@@ -575,6 +599,7 @@ class SpharmPanel(QWidget):
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -767,7 +792,7 @@ class SpharmPanel(QWidget):
             if p_dir and os.path.isdir(p_dir):
                 return os.path.join(p_dir, "output_SPHARM")
             return os.path.join(resolved_base, "output_SPHARM")
-        return "D:/output_SPHARM" if os.path.exists("D:/") else "C:/output_SPHARM"
+        return ""
 
     def get_source_paths(self):
         lh, rh, base, _ = self.resolve_input_folders()
@@ -866,7 +891,7 @@ class SpharmPanel(QWidget):
         self.results_table.setRowCount(0)
         self.signal_log_message.emit(f">>> Initiating Batch SPHARM-PDM Pipeline (Output: {target_base})...")
 
-        self.worker = SpharmWorker(tasks, adv_params)
+        self.worker = SPHARMWorker(tasks, adv_params)
         self.worker.signal_log.connect(self.signal_log_message.emit)
         self.worker.signal_finished.connect(self.on_spharm_finished)
         self.worker.start()

@@ -2,9 +2,9 @@ import sys
 import webbrowser
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 
                              QLabel, QComboBox, QMessageBox, QTextEdit, QPushButton, 
-                             QCheckBox, QApplication, QScrollArea, QFrame)
+                             QCheckBox, QApplication, QScrollArea, QFrame, QLineEdit, QPlainTextEdit)
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 
 from LeftUI.left_panel import LeftPanel
 from RightUI.right_panel import RightPanel
@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
         self.left_scroll = QScrollArea()
         self.left_scroll.setWidgetResizable(True)
         self.left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.left_scroll.setWidget(self.left_panel)
 
@@ -72,10 +72,11 @@ class MainWindow(QMainWindow):
         self.right_panel.setMinimumWidth(500)
         self.right_scroll.setWidget(self.right_panel)
 
+        self.left_scroll.setMinimumWidth(380)
         self.h_splitter.addWidget(self.left_scroll)
         self.h_splitter.addWidget(self.right_scroll)
-        self.h_splitter.setSizes([430, 850])
-        self.saved_h_splitter_sizes = [430, 850]
+        self.h_splitter.setSizes([450, 830])
+        self.saved_h_splitter_sizes = [450, 830]
         self.h_splitter.splitterMoved.connect(self.on_h_splitter_moved)
         
         self.v_splitter.addWidget(self.h_splitter)
@@ -214,10 +215,19 @@ class MainWindow(QMainWindow):
             self.left_panel.signal_gradcam_mesh_requested.connect(self.right_panel.display_gradcam_mesh)
             self.left_panel.signal_patient_overlay_requested.connect(self.right_panel.set_patient_overlay)
             self.left_panel.signal_clear_gradcam_requested.connect(self.right_panel.clear_gradcam_view)
+        if hasattr(self.left_panel, 'signal_diagnostic_info'):
+            self.left_panel.signal_diagnostic_info.connect(self.right_panel.viewer.set_diagnostic_info)
+        if hasattr(self.right_panel, 'signal_step_sd'):
+            self.right_panel.signal_step_sd.connect(self.on_step_sd_requested)
+        if hasattr(self.right_panel, 'signal_reset_sd'):
+            self.right_panel.signal_reset_sd.connect(self.on_reset_sd_requested)
         self.module_combo.currentTextChanged.connect(self.on_module_changed)
 
         # Set initial view mode based on current module selection
         self.on_module_changed(self.module_combo.currentText())
+
+        # Global event filter to ensure arrow keys scrub SD cleanly without scrolling Left UI
+        QApplication.instance().installEventFilter(self)
 
         self.log("SlicerSALT-style UI initialized successfully.")
         
@@ -416,7 +426,7 @@ class MainWindow(QMainWindow):
         # Currently Main Panel and Result Panel do not have Right UI,
         # but the Right UI system is fully preserved so either can be enabled here in the future.
         modules_with_right_ui = {
-            "Main Panel": False,
+            "Main Panel": True,
             "Data Importer": True,
             "FastSurfer Segmentation": True,
             "ICP Registration": True,
@@ -442,7 +452,7 @@ class MainWindow(QMainWindow):
                 else:
                     self.h_splitter.setSizes([430, 850])
 
-            if module_name in ("ICP Registration", "SPHARM Processing", "Result Panel"):
+            if module_name in ("ICP Registration", "SPHARM Processing", "Result Panel", "Main Panel"):
                 self.right_panel.set_view_mode("full_3d", module_name)
             elif module_name == "FastSurfer Segmentation":
                 self.right_panel.set_view_mode("quad", module_name)
@@ -450,6 +460,11 @@ class MainWindow(QMainWindow):
             else:
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(False)
+
+        # If switching away from Result Panel, always clear Grad-CAM scalar actors and colorbar
+        if module_name != "Result Panel":
+            if hasattr(self.right_panel, 'clear_gradcam_view'):
+                self.right_panel.clear_gradcam_view(render_now=False)
 
         # Sync state with newly active module panel
         active_panel = self.left_panel.get_current_module_panel()
@@ -465,3 +480,47 @@ class MainWindow(QMainWindow):
                 active_panel.emit_overlay_meshes()
         if hasattr(active_panel, 'current_side_filter'):
             self.right_panel.set_side_filter(active_panel.current_side_filter)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress:
+            if self.module_combo.currentText() == "Result Panel":
+                if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_BracketLeft, Qt.Key.Key_Comma):
+                    if not isinstance(obj, (QLineEdit, QTextEdit, QPlainTextEdit)):
+                        self.on_step_sd_requested(-0.1)
+                        return True
+                elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_BracketRight, Qt.Key.Key_Period):
+                    if not isinstance(obj, (QLineEdit, QTextEdit, QPlainTextEdit)):
+                        self.on_step_sd_requested(0.1)
+                        return True
+                elif event.key() in (Qt.Key.Key_0, Qt.Key.Key_R, Qt.Key.Key_Home, Qt.Key.Key_Space):
+                    if not isinstance(obj, (QLineEdit, QTextEdit, QPlainTextEdit)):
+                        self.on_reset_sd_requested()
+                        return True
+        return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event):
+        curr = self.module_combo.currentText()
+        if curr == "Result Panel":
+            if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_BracketLeft, Qt.Key.Key_Comma):
+                self.on_step_sd_requested(-0.1)
+                event.accept()
+                return
+            elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_BracketRight, Qt.Key.Key_Period):
+                self.on_step_sd_requested(0.1)
+                event.accept()
+                return
+            elif event.key() in (Qt.Key.Key_0, Qt.Key.Key_R, Qt.Key.Key_Home, Qt.Key.Key_Space):
+                self.on_reset_sd_requested()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def on_step_sd_requested(self, delta: float):
+        res_panel = getattr(self.left_panel, 'result_panel', None)
+        if res_panel and hasattr(res_panel, 'step_sd'):
+            res_panel.step_sd(delta)
+
+    def on_reset_sd_requested(self):
+        res_panel = getattr(self.left_panel, 'result_panel', None)
+        if res_panel and hasattr(res_panel, 'set_sd_value'):
+            res_panel.set_sd_value(0.0)

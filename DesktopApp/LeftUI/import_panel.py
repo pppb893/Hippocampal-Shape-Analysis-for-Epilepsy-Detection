@@ -163,8 +163,6 @@ class ImportPanel(QWidget):
         self.folder_input.setReadOnly(True)
         self.folder_input.setPlaceholderText("No input directory selected...")
         self.folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
-        if getattr(self, 'last_input_dir', None) and os.path.isdir(self.last_input_dir):
-            self.folder_input.setText(self.last_input_dir)
         input_col.addWidget(input_lbl)
         input_col.addWidget(self.folder_input)
         path_row.addLayout(input_col)
@@ -177,8 +175,6 @@ class ImportPanel(QWidget):
         self.out_folder_input.setReadOnly(True)
         self.out_folder_input.setPlaceholderText("No output directory selected...")
         self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
-        if getattr(self, 'last_output_dir', None) and os.path.isdir(self.last_output_dir):
-            self.out_folder_input.setText(self.last_output_dir)
         output_col.addWidget(output_lbl)
         output_col.addWidget(self.out_folder_input)
         path_row.addLayout(output_col)
@@ -221,6 +217,7 @@ class ImportPanel(QWidget):
         self.subjects_table = ToggleTableWidget(0, 1)
         self.subjects_table.setHorizontalHeaderLabels(["Subject name"])
         self.subjects_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.subjects_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.subjects_table.itemSelectionChanged.connect(self.on_subject_selection_changed)
         subj_layout.addWidget(self.subjects_table)
         
@@ -274,11 +271,7 @@ class ImportPanel(QWidget):
             except Exception:
                 self.recent_dirs = []
         
-        # Seed with D:/input-mri if available and history is empty
-        if not self.recent_dirs and os.path.isdir("D:/input-mri"):
-            self.recent_dirs.append("D:/input-mri")
-            self.last_input_dir = "D:/input-mri"
-            self.save_history()
+        # History is kept empty unless user explicitly adds directories
 
     def save_history(self):
         try:
