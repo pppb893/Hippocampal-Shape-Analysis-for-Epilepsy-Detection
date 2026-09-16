@@ -82,6 +82,9 @@ def copy_and_organize_files(repo_root, target_dir):
                     "model_mean_roc_curves_single_graph.png",
                     "model_roc_bands_grid.png",
                     "model_bootstrap_violin_4metrics.png",
+                    "model_bootstrap_boxplot_4metrics.png",
+                    "model_bootstrap_boxplot_auc.png",
+                    "model_bootstrap_boxplot_accuracy.png",
                     "plsda_components_class_stats.csv"
                 ]
                 for p_name in target_plots:
