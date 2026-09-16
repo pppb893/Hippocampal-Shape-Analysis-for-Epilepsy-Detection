@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self.left_scroll.setWidgetResizable(True)
         self.left_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.left_scroll.horizontalScrollBar().setEnabled(False)
         self.left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.left_scroll.setWidget(self.left_panel)
 

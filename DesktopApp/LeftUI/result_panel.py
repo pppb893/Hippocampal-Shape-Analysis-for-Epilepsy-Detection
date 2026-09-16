@@ -91,20 +91,21 @@ class ResultPanel(QWidget):
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 10, 12, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(8)
 
         # Scroll area to handle smaller screens gracefully
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.horizontalScrollBar().setEnabled(False)
         scroll.setStyleSheet("background: transparent;")
 
         container = QWidget()
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(10)
+        container_layout.setSpacing(8)
 
         # ---------------------------------------------------------------------
         # 1. Diagnostic Model & Input Data
@@ -128,12 +129,12 @@ class ResultPanel(QWidget):
             }
         """)
         h_layout = QVBoxLayout(header_group)
-        h_layout.setSpacing(8)
+        h_layout.setSpacing(6)
 
         # Path input
         path_row = QHBoxLayout()
         path_lbl = QLabel("SPHARM Dir:")
-        path_lbl.setFixedWidth(75)
+        path_lbl.setFixedWidth(68)
         path_lbl.setStyleSheet("font-size: 11px; color: #2c3e50; font-weight: bold;")
         self.spharm_dir_input = QLineEdit()
         self.spharm_dir_input.setPlaceholderText("Select directory with SPHARM .coef / .vtk results...")
@@ -141,7 +142,7 @@ class ResultPanel(QWidget):
             QLineEdit {
                 border: 1px solid #ced6e0;
                 border-radius: 3px;
-                padding: 4px 6px;
+                padding: 3px 6px;
                 font-size: 11px;
                 background: #ffffff;
             }
@@ -158,7 +159,7 @@ class ResultPanel(QWidget):
                 border-radius: 3px;
                 font-size: 11px;
                 font-weight: bold;
-                padding: 2px 10px;
+                padding: 2px 6px;
             }
             QPushButton:hover { background: #e4e7eb; }
         """)
@@ -177,6 +178,7 @@ class ResultPanel(QWidget):
 
         # Model architecture badge
         model_badge = QLabel("Architecture: <b>ResNet1D (1D-CNN) + PLS-DA</b> | Weights: <b>Trained & Frozen</b>")
+        model_badge.setWordWrap(True)
         model_badge.setStyleSheet("font-size: 10px; color: #576574; background: #ffffff; padding: 4px 6px; border-radius: 3px; border: 1px solid #e9ecef;")
         h_layout.addWidget(model_badge)
 
@@ -188,12 +190,12 @@ class ResultPanel(QWidget):
         exec_group = QGroupBox("2. Batch Evaluation & Output Configuration")
         exec_group.setStyleSheet(header_group.styleSheet())
         e_layout = QVBoxLayout(exec_group)
-        e_layout.setSpacing(8)
+        e_layout.setSpacing(6)
 
         # Output directory config
         out_row = QHBoxLayout()
         out_lbl = QLabel("Output Dir:")
-        out_lbl.setFixedWidth(75)
+        out_lbl.setFixedWidth(68)
         out_lbl.setStyleSheet("font-size: 11px; color: #2c3e50; font-weight: bold;")
         self.result_dir_input = QLineEdit()
         self.result_dir_input.setPlaceholderText("Auto (.../output_Result)")
@@ -218,11 +220,11 @@ class ResultPanel(QWidget):
 
         # Prediction target options (Hemispheres)
         eval_opts_layout = QHBoxLayout()
-        eval_lbl = QLabel("Target Hemisphere:")
+        eval_lbl = QLabel("Target:")
         eval_lbl.setStyleSheet("font-size: 11px; color: #2c3e50; font-weight: bold;")
         eval_opts_layout.addWidget(eval_lbl)
         self.side_eval_group = QButtonGroup(self)
-        self.rb_both = QRadioButton("Bilateral (Both)")
+        self.rb_both = QRadioButton("Both")
         self.rb_left = QRadioButton("Left (LH)")
         self.rb_right = QRadioButton("Right (RH)")
         self.rb_both.setChecked(True)
@@ -236,8 +238,8 @@ class ResultPanel(QWidget):
         e_layout.addLayout(eval_opts_layout)
 
         # Run Batch Prediction Action Button
-        self.predict_btn = QPushButton("⚡ Run ResNet Batch Prediction & 3D Grad-CAM (All Meshes)")
-        self.predict_btn.setFixedHeight(34)
+        self.predict_btn = QPushButton("⚡ Run ResNet Batch Prediction")
+        self.predict_btn.setFixedHeight(32)
         self.predict_btn.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         self.predict_btn.setStyleSheet("""
             QPushButton {
@@ -245,7 +247,7 @@ class ResultPanel(QWidget):
                 color: #ffffff;
                 border: none;
                 border-radius: 4px;
-                padding: 4px 12px;
+                padding: 4px 8px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3a99d8, stop:1 #2471a3);
@@ -318,15 +320,15 @@ class ResultPanel(QWidget):
 
         # Tabs (All / Left / Right)
         self.tab_bar = QTabBar()
-        self.tab_bar.addTab("All Subjects")
+        self.tab_bar.addTab("All")
         self.tab_bar.addTab("Left (LH)")
         self.tab_bar.addTab("Right (RH)")
-        self.tab_bar.setExpanding(True)
+        self.tab_bar.setExpanding(False)
         self.tab_bar.setStyleSheet("""
             QTabBar::tab {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
                 color: #2c3e50;
-                padding: 5px 12px;
+                padding: 4px 10px;
                 margin-right: 2px;
                 font-weight: bold;
                 font-size: 11px;
@@ -354,12 +356,20 @@ class ResultPanel(QWidget):
             "Subject", "Side", "Diagnosis", "Prob", "Mesh (.vtk)"
         ])
         h_header = self.results_table.horizontalHeader()
-        h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.results_table.setColumnWidth(0, 80)
+        h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.results_table.setColumnWidth(1, 38)
+        h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.results_table.setColumnWidth(2, 65)
+        h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.results_table.setColumnWidth(3, 48)
         h_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         h_header.setStretchLastSection(True)
+        self.results_table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.results_table.horizontalScrollBar().setEnabled(False)
+        self.results_table.verticalHeader().setVisible(False)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -374,110 +384,31 @@ class ResultPanel(QWidget):
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
-                padding: 4px;
+                padding: 4px 2px;
                 font-weight: bold;
                 border: 1px solid #dcdde1;
                 font-size: 11px;
             }
         """)
         self.results_table.setFixedHeight(145)
-        self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.results_table.itemSelectionChanged.connect(self.on_result_selected)
         r_layout.addWidget(self.results_table)
 
         container_layout.addWidget(results_group)
 
         # ---------------------------------------------------------------------
-        # 4. Diagnostic Report Card
+        # 4. 3D Grad-CAM & Deformation Heatmap Controls
         # ---------------------------------------------------------------------
-        diag_group = QGroupBox("4. Diagnostic Scorecard & Lateralization")
-        diag_group.setStyleSheet(header_group.styleSheet())
-        d_layout = QVBoxLayout(diag_group)
-        d_layout.setSpacing(8)
-
-        # Prominent Result Status Banner
-        self.status_banner = QFrame()
-        self.status_banner.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 2px dashed #b2bec3;
-                border-radius: 6px;
-                padding: 10px;
-            }
-        """)
-        banner_layout = QVBoxLayout(self.status_banner)
-        banner_layout.setContentsMargins(8, 6, 8, 6)
-        banner_layout.setSpacing(4)
-
-        self.diagnosis_badge = QLabel("Awaiting Evaluation")
-        self.diagnosis_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.diagnosis_badge.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        self.diagnosis_badge.setStyleSheet("color: #7f8c8d;")
-        banner_layout.addWidget(self.diagnosis_badge)
-
-        self.risk_badge = QLabel("Click 'Run ResNet Batch Prediction' or select a subject from the table above")
-        self.risk_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.risk_badge.setStyleSheet("font-size: 11px; color: #576574;")
-        banner_layout.addWidget(self.risk_badge)
-        d_layout.addWidget(self.status_banner)
-
-        # Confidence Bar
-        conf_layout = QHBoxLayout()
-        conf_layout.addWidget(QLabel("Epilepsy Probability:"))
-        self.prob_bar = QProgressBar()
-        self.prob_bar.setRange(0, 100)
-        self.prob_bar.setValue(0)
-        self.prob_bar.setTextVisible(True)
-        self.prob_bar.setFormat("%v%")
-        self.prob_bar.setFixedHeight(18)
-        self.prob_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                text-align: center;
-                background-color: #ecf0f1;
-                font-size: 10px;
-                font-weight: bold;
-                color: #2c3e50;
-            }
-            QProgressBar::chunk {
-                background-color: #3498db;
-                border-radius: 2px;
-            }
-        """)
-        conf_layout.addWidget(self.prob_bar)
-        d_layout.addLayout(conf_layout)
-
-        # Lateralization Meter (Left vs Right)
-        lat_box = QFrame()
-        lat_box.setStyleSheet("background: #f1f2f6; border: 1px solid #dcdde1; border-radius: 4px; padding: 6px;")
-        lat_layout = QVBoxLayout(lat_box)
-        lat_layout.setContentsMargins(4, 4, 4, 4)
-        lat_layout.setSpacing(3)
-
-        self.lat_title_lbl = QLabel("Hemispheric Lateralization Breakdown:")
-        self.lat_title_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
-        self.lat_detail_lbl = QLabel("• Left: N/A  |  • Right: N/A  |  • Primary Focus: N/A")
-        self.lat_detail_lbl.setStyleSheet("font-size: 11px; color: #34495e;")
-        lat_layout.addWidget(self.lat_title_lbl)
-        lat_layout.addWidget(self.lat_detail_lbl)
-        d_layout.addWidget(lat_box)
-
-        container_layout.addWidget(diag_group)
-
-        # ---------------------------------------------------------------------
-        # 5. 3D Grad-CAM & Deformation Heatmap Controls
-        # ---------------------------------------------------------------------
-        cam_group = QGroupBox("5. 3D Grad-CAM & Atrophy Visualization")
+        cam_group = QGroupBox("4. 3D Grad-CAM & Atrophy Visualization")
         cam_group.setStyleSheet(header_group.styleSheet())
         c_layout = QVBoxLayout(cam_group)
         c_layout.setSpacing(6)
 
         # Active view hemisphere
         side_row = QHBoxLayout()
-        side_row.addWidget(QLabel("Render Side:"))
-        self.rb_cam_left = QRadioButton("Left Hippocampus (LH)")
-        self.rb_cam_right = QRadioButton("Right Hippocampus (RH)")
+        side_row.addWidget(QLabel("Side:"))
+        self.rb_cam_left = QRadioButton("Left (LH)")
+        self.rb_cam_right = QRadioButton("Right (RH)")
         self.rb_cam_left.setChecked(True)
         self.cam_side_group = QButtonGroup(self)
         self.cam_side_group.addButton(self.rb_cam_left, 0)
@@ -490,8 +421,8 @@ class ResultPanel(QWidget):
 
         # Visualization mode options
         c_layout.addWidget(QLabel("Colormap Heatmap Mode:"))
-        self.rb_dist = QRadioButton("🔵 Deformation Mag (Blue → Red)")
-        self.rb_signed = QRadioButton("⚪ Signed Atrophy (Inward / Expansion)")
+        self.rb_dist = QRadioButton("🔵 Deformation Mag (mm)")
+        self.rb_signed = QRadioButton("⚪ Signed Atrophy (Inward/Expansion)")
         self.rb_gradcam = QRadioButton("🔴 ResNet Grad-CAM Attention")
         self.rb_dist.setChecked(True)
 
@@ -512,19 +443,19 @@ class ResultPanel(QWidget):
                 background: #ffffff;
                 border: 1px solid #ced6e0;
                 border-radius: 4px;
-                padding: 6px;
+                padding: 4px;
             }
         """)
         sd_box_layout = QVBoxLayout(sd_box)
-        sd_box_layout.setContentsMargins(6, 6, 6, 6)
-        sd_box_layout.setSpacing(5)
+        sd_box_layout.setContentsMargins(4, 4, 4, 4)
+        sd_box_layout.setSpacing(4)
 
         # Header Row with prominent SD indicator badge and quick Reset button
         sd_hdr_row = QHBoxLayout()
-        sd_title = QLabel("Latent SD Trajectory:")
+        sd_title = QLabel("SD Trajectory:")
         sd_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #2c3e50;")
         
-        self.sd_reset_btn = QPushButton("🔄 Reset (0 SD)")
+        self.sd_reset_btn = QPushButton("🔄 Reset")
         self.sd_reset_btn.setFixedHeight(22)
         self.sd_reset_btn.setToolTip("Reset latent SD trajectory to 0.0 SD (Mean) [Hotkeys: 0, R, Space, Home]")
         self.sd_reset_btn.setStyleSheet("""
@@ -535,7 +466,7 @@ class ResultPanel(QWidget):
                 border-radius: 3px;
                 font-size: 10px;
                 font-weight: bold;
-                padding: 1px 7px;
+                padding: 1px 6px;
             }
             QPushButton:hover {
                 background: #ebf5fb;
@@ -545,14 +476,14 @@ class ResultPanel(QWidget):
         """)
         self.sd_reset_btn.clicked.connect(lambda: self.set_sd_value(0.0))
 
-        self.sd_val_badge = QLabel("SD = +0.0 (Mean) [Step 31/61]")
+        self.sd_val_badge = QLabel("0.0 SD (Mean)")
         self.sd_val_badge.setStyleSheet("""
             QLabel {
                 background: #ebf5fb;
                 color: #2980b9;
                 font-weight: bold;
                 font-size: 11px;
-                padding: 2px 8px;
+                padding: 2px 6px;
                 border-radius: 3px;
                 border: 1px solid #aed6f1;
             }
@@ -566,7 +497,7 @@ class ResultPanel(QWidget):
         # Stepper buttons + Continuous Slider Row
         slider_row = QHBoxLayout()
         self.sd_prev_btn = QPushButton("◀ -0.1 SD")
-        self.sd_prev_btn.setFixedHeight(26)
+        self.sd_prev_btn.setFixedHeight(24)
         self.sd_prev_btn.setStyleSheet("""
             QPushButton {
                 background: #f1f2f6;
@@ -575,7 +506,7 @@ class ResultPanel(QWidget):
                 border-radius: 3px;
                 font-size: 10px;
                 font-weight: bold;
-                padding: 2px 6px;
+                padding: 1px 5px;
             }
             QPushButton:hover { background: #e4e7eb; }
         """)
@@ -591,7 +522,7 @@ class ResultPanel(QWidget):
         self.sd_slider.valueChanged.connect(self.on_sd_slider_changed)
 
         self.sd_next_btn = QPushButton("+0.1 SD ▶")
-        self.sd_next_btn.setFixedHeight(26)
+        self.sd_next_btn.setFixedHeight(24)
         self.sd_next_btn.setStyleSheet(self.sd_prev_btn.styleSheet())
         self.sd_next_btn.setToolTip("Step latent deformation forward by +0.1 SD (or press Right Arrow key)")
         self.sd_next_btn.clicked.connect(lambda: self.step_sd(+0.1))
@@ -603,7 +534,7 @@ class ResultPanel(QWidget):
 
         # Milestone quick buttons row
         milestone_row = QHBoxLayout()
-        milestone_row.setSpacing(3)
+        milestone_row.setSpacing(2)
         m_btn_style = """
             QPushButton {
                 background: #f8f9fa;
@@ -612,7 +543,7 @@ class ResultPanel(QWidget):
                 border-radius: 3px;
                 font-size: 9px;
                 font-weight: bold;
-                padding: 2px 2px;
+                padding: 2px 1px;
             }
             QPushButton:hover { background: #e2e8f0; }
         """
@@ -653,68 +584,13 @@ class ResultPanel(QWidget):
         sd_box_layout.addLayout(milestone_row)
 
         # Keyboard helper hint
-        hint_lbl = QLabel("⌨️ <i>Hotkeys: <b>← Left / Right →</b> Step SD  |  <b>0 / R / Space</b> Reset to Mean (0 SD)</i>")
+        hint_lbl = QLabel("⌨️ <i>Hotkeys: <b>← / →</b> Step SD  |  <b>0 / R / Space</b> Reset</i>")
         hint_lbl.setStyleSheet("font-size: 9px; color: #576574; font-style: italic;")
         sd_box_layout.addWidget(hint_lbl)
 
         c_layout.addWidget(sd_box)
 
-        # Patient Mesh Overlay Toggle (Unchecked by default so user sees clean Grad-CAM mesh)
-        overlay_row = QHBoxLayout()
-        self.patient_overlay_cb = QCheckBox("Overlay Patient Mesh (Translucent Cyan)")
-        self.patient_overlay_cb.setChecked(False)
-        self.patient_overlay_cb.setStyleSheet("font-weight: bold; color: #16a085; font-size: 11px;")
-        self.patient_overlay_cb.toggled.connect(self.on_patient_overlay_toggled)
-
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(10, 100)
-        self.opacity_slider.setValue(40)
-        self.opacity_slider.setFixedWidth(80)
-        self.opacity_slider.valueChanged.connect(self.on_patient_overlay_toggled)
-
-        overlay_row.addWidget(self.patient_overlay_cb)
-        overlay_row.addWidget(QLabel("Opacity:"))
-        overlay_row.addWidget(self.opacity_slider)
-        c_layout.addLayout(overlay_row)
-
-        # Update 3D View Button
-        render_btn = QPushButton("👁️ Refresh 3D Heatmap View")
-        render_btn.setFixedHeight(28)
-        render_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f2f6;
-                color: #2f3542;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background: #e4e7eb; }
-        """)
-        render_btn.clicked.connect(self.update_3d_view)
-        c_layout.addWidget(render_btn)
-
         container_layout.addWidget(cam_group)
-
-        # ---------------------------------------------------------------------
-        # 6. Summary & Clipboard
-        # ---------------------------------------------------------------------
-        bottom_row = QHBoxLayout()
-        self.copy_summary_btn = QPushButton("📋 Copy Summary")
-        self.copy_summary_btn.setFixedHeight(28)
-        self.copy_summary_btn.setStyleSheet(render_btn.styleSheet())
-        self.copy_summary_btn.clicked.connect(self.copy_summary)
-        self.copy_summary_btn.setEnabled(False)
-
-        self.clear_btn = QPushButton("🧹 Clear View")
-        self.clear_btn.setFixedHeight(28)
-        self.clear_btn.setStyleSheet(render_btn.styleSheet())
-        self.clear_btn.clicked.connect(self.clear_view)
-
-        bottom_row.addWidget(self.copy_summary_btn)
-        bottom_row.addWidget(self.clear_btn)
-        container_layout.addLayout(bottom_row)
-
         container_layout.addStretch()
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
@@ -808,7 +684,7 @@ class ResultPanel(QWidget):
         for d in search_dirs:
             if not os.path.isdir(d):
                 continue
-            for coef_file in glob.glob(os.path.join(d, "**", "*.coef"), recursive=True):
+            for coef_file in glob.glob(os.path.join(d, "**", "*_SPHARM.coef"), recursive=True):
                 fname = os.path.basename(coef_file)
                 fname_lower = fname.lower()
                 if any(aux in fname_lower for aux in ("_para.", "_surf.", "medialaxis", "_grid.", "template_")):
@@ -840,11 +716,10 @@ class ResultPanel(QWidget):
         def pick_best_coef(c_list):
             if not c_list:
                 return None
-            for suf in ("_SPHARM_ellalign.coef", "_ellalign.coef", "_SPHARM.coef", "_aligned.coef"):
-                cand = [c for c in c_list if c.endswith(suf)]
-                if cand:
-                    return cand[0]
-            return c_list[0]
+            for c in c_list:
+                if c.endswith("_SPHARM.coef"):
+                    return c
+            return None
 
         def pick_best_vtk(v_list):
             if not v_list:
@@ -1172,7 +1047,7 @@ class ResultPanel(QWidget):
                 total_rh += 1
 
         self.tab_bar.blockSignals(True)
-        self.tab_bar.setTabText(0, f"All Meshes ({total_lh + total_rh})")
+        self.tab_bar.setTabText(0, f"All ({total_lh + total_rh})")
         self.tab_bar.setTabText(1, f"Left ({total_lh})")
         self.tab_bar.setTabText(2, f"Right ({total_rh})")
         self.tab_bar.blockSignals(False)
@@ -1286,102 +1161,16 @@ class ResultPanel(QWidget):
 
         # Always initialize latent SD trajectory to 0.0 SD (Mean) matching view_gradcam_plsda_top3
         self.set_sd_value(0.0)
-        self.copy_summary_btn.setEnabled(True)
         self.signal_log_message.emit(f"Inspecting evaluation results for: {record['subject_name']} [{view_side.upper()}]")
 
-    # =========================================================================
-    # Diagnostic Scorecard Display
     # =========================================================================
     def display_prediction_results(self, results, selected_side=None):
         summary = results.get('summary')
         if not summary:
             return
 
-        prob = summary.get('probability', 0.0)
-        is_tle = summary.get('is_epilepsy', False)
-        label = summary.get('label', 'Unknown')
-        prob_pct = int(round(prob * 100))
-
-        # Update Diagnosis Badge
-        if is_tle:
-            self.diagnosis_badge.setText(f"🚨 {label}")
-            self.diagnosis_badge.setStyleSheet("color: #e74c3c; font-size: 13px; font-weight: bold;")
-            self.status_banner.setStyleSheet("""
-                QFrame {
-                    background-color: #fdf2f2;
-                    border: 2px solid #e74c3c;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """)
-            if prob > 0.75:
-                risk_str = f"HIGH RISK — Strong morphological atrophy pattern ({prob*100:.1f}%)"
-            else:
-                risk_str = f"MODERATE / BORDERLINE TLE RISK ({prob*100:.1f}%)"
-            self.risk_badge.setText(risk_str)
-            self.risk_badge.setStyleSheet("color: #c0392b; font-weight: bold; font-size: 11px;")
-            self.prob_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #ced6e0;
-                    border-radius: 3px;
-                    text-align: center;
-                    background-color: #ecf0f1;
-                    font-size: 10px;
-                    font-weight: bold;
-                    color: #2c3e50;
-                }
-                QProgressBar::chunk {
-                    background-color: #e74c3c;
-                    border-radius: 2px;
-                }
-            """)
-        else:
-            self.diagnosis_badge.setText(f"✅ {label}")
-            self.diagnosis_badge.setStyleSheet("color: #27ae60; font-size: 13px; font-weight: bold;")
-            self.status_banner.setStyleSheet("""
-                QFrame {
-                    background-color: #f2fbf6;
-                    border: 2px solid #27ae60;
-                    border-radius: 6px;
-                    padding: 8px;
-                }
-            """)
-            self.risk_badge.setText(f"NORMAL — Standard anatomical shape distribution ({(1.0-prob)*100:.1f}% Confidence)")
-            self.risk_badge.setStyleSheet("color: #229954; font-weight: bold; font-size: 11px;")
-            self.prob_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #ced6e0;
-                    border-radius: 3px;
-                    text-align: center;
-                    background-color: #ecf0f1;
-                    font-size: 10px;
-                    font-weight: bold;
-                    color: #2c3e50;
-                }
-                QProgressBar::chunk {
-                    background-color: #27ae60;
-                    border-radius: 2px;
-                }
-            """)
-
-        self.prob_bar.setValue(prob_pct)
-
-        # Update Lateralization Breakdown
         lh_prob = summary.get('left_prob')
         rh_prob = summary.get('right_prob')
-        lh_str = f"{lh_prob*100:.1f}%" if lh_prob is not None else "N/A"
-        rh_str = f"{rh_prob*100:.1f}%" if rh_prob is not None else "N/A"
-        focus = summary.get('primary_side', 'N/A')
-
-        if is_tle:
-            focus_str = f"<b style='color: #c0392b;'>{focus} Hippocampus</b> (Greater Atrophy Alignment)"
-        else:
-            focus_str = "Bilateral Symmetrical Normative Shape"
-
-        self.lat_detail_lbl.setText(
-            f"• Left (LH) Risk: <b>{lh_str}</b> | • Right (RH) Risk: <b>{rh_str}</b><br>"
-            f"• Suspected Seizure Focus: {focus_str}"
-        )
 
         # Prioritize selected_side if clicked from table; otherwise use higher risk side
         if selected_side in ("left", "right"):
@@ -1440,33 +1229,33 @@ class ResultPanel(QWidget):
 
     def _update_sd_badge(self, sd_val: float, step_idx: int):
         if abs(sd_val) < 0.05:
-            desc = "Mean (0 SD)"
+            desc = "Mean"
             color = "#2980b9"
             bg = "#ebf5fb"
             border = "#aed6f1"
         elif sd_val <= -2.0:
-            desc = f"{sd_val:+.1f} SD (Severe Atrophy)" if sd_val <= -2.5 else f"{sd_val:+.1f} SD (Atrophy)"
+            desc = "Severe Atrophy" if sd_val <= -2.5 else "Atrophy"
             color = "#c0392b"
             bg = "#fdf2f2"
             border = "#f5b7b1"
         elif sd_val < 0.0:
-            desc = f"{sd_val:+.1f} SD (Mild Atrophy)"
+            desc = "Mild Atrophy"
             color = "#d35400"
             bg = "#fef5e7"
             border = "#fad7a0"
         else:
-            desc = f"{sd_val:+.1f} SD (Expansion)"
+            desc = "Expansion"
             color = "#27ae60"
             bg = "#f2fbf6"
             border = "#abebc6"
-        self.sd_val_badge.setText(f"SD = {sd_val:+.1f} ({desc}) [{step_idx+1}/61]")
+        self.sd_val_badge.setText(f"{sd_val:+.1f} SD ({desc})")
         self.sd_val_badge.setStyleSheet(f"""
             QLabel {{
                 background: {bg};
                 color: {color};
                 font-weight: bold;
                 font-size: 11px;
-                padding: 2px 8px;
+                padding: 2px 6px;
                 border-radius: 3px;
                 border: 1px solid {border};
             }}
@@ -1557,18 +1346,8 @@ class ResultPanel(QWidget):
         self.on_patient_overlay_toggled()
 
     def on_patient_overlay_toggled(self):
-        is_overlay = self.patient_overlay_cb.isChecked()
-        opacity = self.opacity_slider.value() / 100.0
         side = "left" if self.rb_cam_left.isChecked() else "right"
-
-        patient_mesh = None
-        if self.current_patient_data:
-            patient_mesh = self.current_patient_data.get(f"patient_{side}_mesh") or self.current_patient_data.get(f"{side}_vtk")
-
-        if is_overlay and patient_mesh and os.path.isfile(patient_mesh):
-            self.signal_patient_overlay_requested.emit(patient_mesh, True, opacity, side)
-        else:
-            self.signal_patient_overlay_requested.emit("", False, 0.0, side)
+        self.signal_patient_overlay_requested.emit("", False, 0.0, side)
 
     def clear_view(self):
         self.signal_clear_gradcam_requested.emit()
@@ -1581,26 +1360,11 @@ class ResultPanel(QWidget):
         self.results_table.blockSignals(False)
 
         self.tab_bar.blockSignals(True)
-        self.tab_bar.setTabText(0, "All Meshes (0)")
+        self.tab_bar.setTabText(0, "All (0)")
         self.tab_bar.setTabText(1, "Left (0)")
         self.tab_bar.setTabText(2, "Right (0)")
         self.tab_bar.blockSignals(False)
 
-        self.diagnosis_badge.setText("Awaiting Evaluation")
-        self.diagnosis_badge.setStyleSheet("color: #7f8c8d;")
-        self.risk_badge.setText("Click 'Run ResNet Batch Prediction' or select a subject from the table above")
-        self.risk_badge.setStyleSheet("color: #576574;")
-        self.status_banner.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 2px dashed #b2bec3;
-                border-radius: 6px;
-                padding: 10px;
-            }
-        """)
-        self.prob_bar.setValue(0)
-        self.lat_detail_lbl.setText("• Left: N/A  |  • Right: N/A  |  • Primary Focus: N/A")
-        self.copy_summary_btn.setEnabled(False)
         self.signal_log_message.emit("Diagnostic panel reset.")
 
     def copy_summary(self):
