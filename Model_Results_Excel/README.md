@@ -30,7 +30,7 @@ Model_Results_Excel/
 │   ├── generate_plsda_train_test_score_plots.py     # สคริปต์วาด PLS-DA Score Plots (แยกซ้าย-ขวา/Dataset/Markers)
 │   └── organize_and_consolidate_gradcam_results.py  # สคริปต์รวบรวม Grad-CAM Attention และ Distance Mapping
 │
-├── 05_Bootstrap_Violin_Plots/            # 🎻 กราฟ Violin Plot การกระจายตัวของค่าสถิติ Bootstrap 1,000 รอบ
+├── 05_Bootstrap_Violin_Plots/            # 🎻 กราฟ Violin Plot & Box Plot พร้อมไฟล์ข้อมูลดิบ 1,000 รอบ (Raw Iterations CSV)
 ├── 06_ROC_Curves/                        # 📉 กราฟ ROC Curves และ Confidence Band
 ├── 07_Detailed_Model_Plots/              # 🔍 กราฟวิเคราะห์ประสิทธิภาพโมเดลรายชุดข้อมูล
 ├── 08_PLSDA_Class_Violin_Plots/          # 🎻 กราฟ Violin Plot พารามิเตอร์ PLS-DA แยกตามคลาส
