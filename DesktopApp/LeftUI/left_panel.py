@@ -126,10 +126,12 @@ class LeftPanel(QWidget):
         self.spharm_panel.signal_template_toggled.connect(self.signal_template_toggled)
 
         # Forward overlay all meshes toggle signals
+        self.fastsurfer_panel.signal_overlay_all_toggled.connect(self.signal_overlay_all_toggled)
         self.icp_panel.signal_overlay_all_toggled.connect(self.signal_overlay_all_toggled)
         self.spharm_panel.signal_overlay_all_toggled.connect(self.signal_overlay_all_toggled)
 
         # Forward side filter changed signals
+        self.fastsurfer_panel.signal_side_changed.connect(self.signal_side_changed)
         self.icp_panel.signal_side_changed.connect(self.signal_side_changed)
         self.spharm_panel.signal_side_changed.connect(self.signal_side_changed)
 

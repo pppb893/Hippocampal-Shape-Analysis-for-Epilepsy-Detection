@@ -13,6 +13,7 @@ class ToggleTableWidget(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -53,7 +54,7 @@ class ImportPanel(QWidget):
         import_group = QGroupBox("Import Data Properties")
         import_group.setStyleSheet("""
             QGroupBox {
-                margin-top: 15px;
+                margin-top: 10px;
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
                 background-color: #f8f9fa;
@@ -68,13 +69,10 @@ class ImportPanel(QWidget):
             }
         """)
         ig_layout = QVBoxLayout(import_group)
-        ig_layout.setContentsMargins(10, 20, 10, 10)
+        ig_layout.setContentsMargins(10, 16, 10, 10)
         ig_layout.setSpacing(8)
 
-        # Row 1: Choose Data Directory with Open File History button
-        data_btn_row = QHBoxLayout()
-        data_btn_row.setSpacing(6)
-
+        # Row 1: Choose Data Directory
         dir_select_btn = QPushButton("Choose Data Directory")
         dir_select_btn.setStyleSheet("""
             QPushButton {
@@ -97,34 +95,8 @@ class ImportPanel(QWidget):
             }
         """)
         dir_select_btn.clicked.connect(self.select_directory)
-        data_btn_row.addWidget(dir_select_btn, stretch=3)
-
-        self.history_btn = QPushButton("🕒 Open File History")
-        self.history_btn.setToolTip("View and select from previously chosen data directories")
-        self.history_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 7px 8px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
-        """)
-        self.history_btn.clicked.connect(self.show_history_menu)
-        data_btn_row.addWidget(self.history_btn, stretch=2)
-
-        ig_layout.addLayout(data_btn_row)
+        ig_layout.addWidget(dir_select_btn)
+        self.history_btn = None
 
         # Row 2: Choose Output Directory
         out_dir_btn = QPushButton("Choose Output Directory")
@@ -162,7 +134,7 @@ class ImportPanel(QWidget):
         self.folder_input = QLineEdit()
         self.folder_input.setReadOnly(True)
         self.folder_input.setPlaceholderText("No input directory selected...")
-        self.folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        self.folder_input.setStyleSheet("background: white; border: 1px solid #ced6e0; border-radius: 4px; padding: 5px 8px; font-size: 11px;")
         input_col.addWidget(input_lbl)
         input_col.addWidget(self.folder_input)
         path_row.addLayout(input_col)
@@ -174,7 +146,7 @@ class ImportPanel(QWidget):
         self.out_folder_input = QLineEdit()
         self.out_folder_input.setReadOnly(True)
         self.out_folder_input.setPlaceholderText("No output directory selected...")
-        self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ced6e0; border-radius: 4px; padding: 5px 8px; font-size: 11px;")
         output_col.addWidget(output_lbl)
         output_col.addWidget(self.out_folder_input)
         path_row.addLayout(output_col)
@@ -210,14 +182,49 @@ class ImportPanel(QWidget):
 
         # 2. Imported Subjects
         subj_group = QGroupBox("Imported Subjects")
-        subj_group.setStyleSheet("QGroupBox { margin-top: 15px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 3px; }")
+        subj_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                margin-top: 10px;
+                background-color: #ffffff;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
+            }
+        """)
         subj_layout = QVBoxLayout(subj_group)
-        subj_layout.setContentsMargins(10, 20, 10, 10)
+        subj_layout.setContentsMargins(10, 16, 10, 10)
         subj_layout.setSpacing(10)
         self.subjects_table = ToggleTableWidget(0, 1)
         self.subjects_table.setHorizontalHeaderLabels(["Subject name"])
         self.subjects_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.subjects_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.subjects_table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #dcdde1;
+                gridline-color: #ecf0f1;
+                font-size: 11px;
+                background-color: #ffffff;
+            }
+            QTableWidget::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QHeaderView::section {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                padding: 4px;
+                font-weight: bold;
+                border: 1px solid #dcdde1;
+                font-size: 11px;
+            }
+        """)
         self.subjects_table.itemSelectionChanged.connect(self.on_subject_selection_changed)
         subj_layout.addWidget(self.subjects_table)
         
@@ -334,11 +341,11 @@ class ImportPanel(QWidget):
             menu.addSeparator()
 
             for path in self.recent_dirs:
-                act = menu.addAction(f"📁  {path}")
+                act = menu.addAction(path)
                 act.triggered.connect(lambda checked, p=path: self.select_history_path(p))
 
             menu.addSeparator()
-            clear_act = menu.addAction("🧹  Clear History")
+            clear_act = menu.addAction("Clear History")
             clear_act.triggered.connect(self.clear_history)
 
         menu.exec(self.history_btn.mapToGlobal(QPoint(0, self.history_btn.height())))

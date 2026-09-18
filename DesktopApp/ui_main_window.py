@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         console_header.setContentsMargins(2, 0, 2, 0)
         console_header.setSpacing(8)
         
-        console_title = QLabel("🖥️ Terminal & Execution Console")
+        console_title = QLabel("Terminal & Execution Console")
         console_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #2c3e50;")
         console_header.addWidget(console_title)
         
@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
         self.auto_scroll_cb.setStyleSheet("color: #34495e; font-size: 11px;")
         console_header.addWidget(self.auto_scroll_cb)
         
-        copy_btn = QPushButton("📋 Copy All")
+        copy_btn = QPushButton("Copy All")
         copy_btn.setFixedHeight(24)
         copy_btn.setStyleSheet("""
             QPushButton {
@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
         copy_btn.clicked.connect(self.copy_console_logs)
         console_header.addWidget(copy_btn)
         
-        clear_btn = QPushButton("🧹 Clear")
+        clear_btn = QPushButton("Clear")
         clear_btn.setFixedHeight(24)
         clear_btn.setStyleSheet("""
             QPushButton {
@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         clear_btn.clicked.connect(self.clear_console_logs)
         console_header.addWidget(clear_btn)
         
-        self.expand_btn = QPushButton("⤢ Expand")
+        self.expand_btn = QPushButton("Expand")
         self.expand_btn.setFixedHeight(24)
         self.expand_btn.setToolTip("Expand terminal to full screen covering workspace")
         self.expand_btn.setStyleSheet("""
@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("Main Toolbar")
         toolbar.setMovable(False)
 
-        save_action = QAction("💾 Save", self)
+        save_action = QAction("Save", self)
         toolbar.addAction(save_action)
         
         toolbar.addSeparator()
@@ -323,7 +323,7 @@ class MainWindow(QMainWindow):
             self.saved_splitter_sizes = sizes
             self.v_splitter.setSizes([0, total_height])
             self.is_terminal_fullscreen = True
-            self.expand_btn.setText("⤡ Restore")
+            self.expand_btn.setText("Restore")
             self.expand_btn.setToolTip("Restore terminal to original size")
             self.console_status_lbl.setText("Terminal Fullscreen (Covering workspace)")
         else:
@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
             else:
                 self.v_splitter.setSizes([total_height - 135, 135])
             self.is_terminal_fullscreen = False
-            self.expand_btn.setText("⤢ Expand")
+            self.expand_btn.setText("Expand")
             self.expand_btn.setToolTip("Expand terminal to full screen")
             self.console_status_lbl.setText("Ready")
 
@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
         sizes = self.v_splitter.sizes()
         if sizes[0] > 50 and getattr(self, 'is_terminal_fullscreen', False):
             self.is_terminal_fullscreen = False
-            self.expand_btn.setText("⤢ Expand")
+            self.expand_btn.setText("Expand")
             self.expand_btn.setToolTip("Expand terminal to full screen")
 
     def on_h_splitter_moved(self, pos, index):

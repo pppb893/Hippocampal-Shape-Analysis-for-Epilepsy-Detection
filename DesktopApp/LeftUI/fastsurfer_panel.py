@@ -12,6 +12,7 @@ class ToggleTableWidget(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -82,6 +83,8 @@ class FastsurferPanel(QWidget):
     signal_mesh_selected = pyqtSignal(object, str) # filepath can be str or list of str
     signal_fastsurfer_completed = pyqtSignal()
     signal_fastsurfer_finished = pyqtSignal(bool)
+    signal_overlay_all_toggled = pyqtSignal(bool, list, str) # enabled, file_list, side_filter
+    signal_side_changed = pyqtSignal(str)
     
     def __init__(self, get_folder_func, get_output_folder_func=None, parent=None):
         super().__init__(parent)
@@ -129,7 +132,7 @@ class FastsurferPanel(QWidget):
         self.fs_dir_input.setPlaceholderText("No output directory selected...")
         dir_row.addWidget(self.fs_dir_input)
         
-        browse_dir_btn = QPushButton("📁 Browse")
+        browse_dir_btn = QPushButton("Browse")
         browse_dir_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -153,7 +156,7 @@ class FastsurferPanel(QWidget):
         browse_dir_btn.clicked.connect(self.browse_results_directory)
         dir_row.addWidget(browse_dir_btn)
         
-        load_btn = QPushButton("🔄 Reload")
+        load_btn = QPushButton("Reload")
         load_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -199,7 +202,7 @@ class FastsurferPanel(QWidget):
             }
         """)
         fs_form = QFormLayout(fs_group)
-        fs_form.setContentsMargins(10, 20, 10, 10)
+        fs_form.setContentsMargins(10, 16, 10, 10)
         fs_form.setSpacing(6)
         
         self.fs_gpu_cb = QCheckBox("Use GPU Acceleration (if available)")
@@ -211,7 +214,7 @@ class FastsurferPanel(QWidget):
         fs_form.addRow("Pipeline Mode:", self.fs_seg_only_cb)
         fs_layout.addWidget(fs_group)
         
-        self.run_fs_btn = QPushButton("▶ Run FastSurfer Pipeline")
+        self.run_fs_btn = QPushButton("Run FastSurfer Pipeline")
         self.run_fs_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -264,8 +267,32 @@ class FastsurferPanel(QWidget):
             }
         """)
         res_layout = QVBoxLayout(res_group)
-        res_layout.setContentsMargins(10, 20, 10, 10)
+        res_layout.setContentsMargins(10, 16, 10, 10)
         res_layout.setSpacing(6)
+
+        # Overlay All Meshes checkbox
+        top_bar = QHBoxLayout()
+        top_bar.setContentsMargins(0, 0, 0, 2)
+        top_bar.setSpacing(12)
+
+        self.overlay_cb = QCheckBox("Overlay All Meshes")
+        self.overlay_cb.setToolTip("Superimpose and view all segmented meshes together in 3D view")
+        self.overlay_cb.setStyleSheet("""
+            QCheckBox {
+                color: #16a085;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #1abc9c;
+                border: 1px solid #16a085;
+            }
+        """)
+        self.overlay_cb.toggled.connect(self.on_overlay_cb_toggled)
+        top_bar.addWidget(self.overlay_cb)
+        top_bar.addStretch()
+        res_layout.addLayout(top_bar)
         
         # Category Tabs (All / Left / Right)
         self.tab_bar = QTabBar()
@@ -287,9 +314,9 @@ class FastsurferPanel(QWidget):
                 border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
-                color: white;
-                border: 1px solid #1f618d;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f1f2f6);
+                color: #2c3e50;
+                border: 1px solid #b2bec3;
                 border-bottom: none;
             }
             QTabBar::tab:hover:!selected {
@@ -301,7 +328,7 @@ class FastsurferPanel(QWidget):
         
         # Results Table with 3 Columns
         self.results_table = ToggleTableWidget(0, 3)
-        self.results_table.setHorizontalHeaderLabels(["File Name", "Side", "File Path"])
+        self.results_table.setHorizontalHeaderLabels(["Segmented Mesh Name", "Side", "File Path"])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -311,13 +338,15 @@ class FastsurferPanel(QWidget):
                 border: 1px solid #dcdde1;
                 gridline-color: #ecf0f1;
                 font-size: 11px;
+                background-color: #ffffff;
             }
             QTableWidget::item:selected {
                 background-color: #3498db;
                 color: white;
             }
             QHeaderView::section {
-                background-color: #f1f2f6;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 padding: 4px;
                 font-weight: bold;
                 border: 1px solid #dcdde1;
@@ -343,31 +372,15 @@ class FastsurferPanel(QWidget):
         
         if not has_out or not has_in:
             self.run_fs_btn.setEnabled(False)
-            reasons = []
-            if not has_in:
-                reasons.append("Input Directory")
-            if not has_out:
-                reasons.append("Output Directory")
-            missing = " & ".join(reasons)
-            msg = f"🔒 Locked: Please select {missing} in Data Importer before running."
-            self.run_fs_btn.setToolTip(msg)
+            self.run_fs_btn.setToolTip("")
             if hasattr(self, 'fs_status_hint'):
-                self.fs_status_hint.setText(msg)
-                self.fs_status_hint.setStyleSheet("""
-                    color: #c0392b; 
-                    background-color: #fdedec; 
-                    border: 1px solid #f5b7b1; 
-                    font-size: 11px; 
-                    padding: 5px 8px; 
-                    border-radius: 4px;
-                    font-weight: 500;
-                """)
-                self.fs_status_hint.show()
+                self.fs_status_hint.setText("")
+                self.fs_status_hint.hide()
         else:
             self.run_fs_btn.setEnabled(True)
             self.run_fs_btn.setToolTip("Click to run FastSurfer Pipeline")
             if hasattr(self, 'fs_status_hint'):
-                self.fs_status_hint.setText(f"✓ Ready: Results will be stored in: {out_dir}")
+                self.fs_status_hint.setText(f"Ready: Results will be stored in: {out_dir}")
                 self.fs_status_hint.setStyleSheet("""
                     color: #1e8449; 
                     background-color: #eafaf1; 
@@ -435,7 +448,36 @@ class FastsurferPanel(QWidget):
             self.current_side_filter = "rh"
         else:
             self.current_side_filter = "all"
+        self.signal_side_changed.emit(self.current_side_filter)
         self.update_table_display()
+        if hasattr(self, 'overlay_cb') and self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
+
+    def set_overlay_visible(self, visible: bool):
+        if hasattr(self, 'overlay_cb'):
+            self.overlay_cb.blockSignals(True)
+            self.overlay_cb.setChecked(visible)
+            self.overlay_cb.blockSignals(False)
+            if visible:
+                self.emit_overlay_meshes()
+
+    def on_overlay_cb_toggled(self, checked: bool):
+        if checked:
+            self.emit_overlay_meshes()
+        else:
+            self.signal_overlay_all_toggled.emit(False, [], self.current_side_filter)
+
+    def get_current_display_files(self):
+        if self.current_side_filter == "lh":
+            return [f for f in self.all_files if f["side_key"] == "lh"]
+        elif self.current_side_filter == "rh":
+            return [f for f in self.all_files if f["side_key"] == "rh"]
+        return self.all_files
+
+    def emit_overlay_meshes(self):
+        display_files = self.get_current_display_files()
+        filepaths = [f["filepath"] for f in display_files]
+        self.signal_overlay_all_toggled.emit(True, filepaths, self.current_side_filter)
 
     def populate_results_table(self):
         target_dir = self.fs_dir_input.text().strip()
@@ -504,14 +546,11 @@ class FastsurferPanel(QWidget):
         self.tab_bar.setTabText(2, f"Right ({rh_count})")
         
         self.update_table_display()
+        if hasattr(self, 'overlay_cb') and self.overlay_cb.isChecked():
+            self.emit_overlay_meshes()
 
     def update_table_display(self):
-        if self.current_side_filter == "lh":
-            display_files = [f for f in self.all_files if f["side_key"] == "lh"]
-        elif self.current_side_filter == "rh":
-            display_files = [f for f in self.all_files if f["side_key"] == "rh"]
-        else:
-            display_files = self.all_files
+        display_files = self.get_current_display_files()
             
         self.results_table.blockSignals(True)
         self.results_table.setRowCount(len(display_files))

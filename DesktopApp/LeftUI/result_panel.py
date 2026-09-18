@@ -23,6 +23,7 @@ class ToggleTableWidget(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -113,23 +114,50 @@ class ResultPanel(QWidget):
         header_group = QGroupBox("1. Diagnostic Model & Input Data")
         header_group.setStyleSheet("""
             QGroupBox {
-                font-weight: bold;
-                font-size: 11px;
-                color: #2c3e50;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-                margin-top: 8px;
-                padding-top: 8px;
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                margin-top: 10px;
                 background-color: #f8f9fa;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
             }
         """)
         h_layout = QVBoxLayout(header_group)
+        h_layout.setContentsMargins(10, 16, 10, 10)
         h_layout.setSpacing(6)
+
+        # Standard secondary button style consistent with FastSurfer, ICP, and SPHARM panels
+        btn_secondary_style = """
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px 10px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+            QPushButton:disabled {
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
+            }
+        """
 
         # Path input
         path_row = QHBoxLayout()
@@ -141,33 +169,20 @@ class ResultPanel(QWidget):
         self.spharm_dir_input.setStyleSheet("""
             QLineEdit {
                 border: 1px solid #ced6e0;
-                border-radius: 3px;
-                padding: 3px 6px;
+                border-radius: 4px;
+                padding: 5px 8px;
                 font-size: 11px;
                 background: #ffffff;
             }
             QLineEdit:focus { border: 1px solid #3498db; }
         """)
 
-        browse_btn = QPushButton("📁 Browse")
-        browse_btn.setFixedHeight(26)
-        browse_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f2f6;
-                color: #2f3542;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 2px 6px;
-            }
-            QPushButton:hover { background: #e4e7eb; }
-        """)
+        browse_btn = QPushButton("Browse")
+        browse_btn.setStyleSheet(btn_secondary_style)
         browse_btn.clicked.connect(self.browse_spharm_dir)
 
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.setFixedHeight(26)
-        refresh_btn.setStyleSheet(browse_btn.styleSheet())
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setStyleSheet(btn_secondary_style)
         refresh_btn.clicked.connect(self.on_spharm_dir_changed)
 
         path_row.addWidget(path_lbl)
@@ -190,6 +205,7 @@ class ResultPanel(QWidget):
         exec_group = QGroupBox("2. Batch Evaluation & Output Configuration")
         exec_group.setStyleSheet(header_group.styleSheet())
         e_layout = QVBoxLayout(exec_group)
+        e_layout.setContentsMargins(10, 16, 10, 10)
         e_layout.setSpacing(6)
 
         # Output directory config
@@ -201,15 +217,13 @@ class ResultPanel(QWidget):
         self.result_dir_input.setPlaceholderText("Auto (.../output_Result)")
         self.result_dir_input.setStyleSheet(self.spharm_dir_input.styleSheet())
 
-        browse_out_btn = QPushButton("📁 Browse")
-        browse_out_btn.setFixedHeight(26)
-        browse_out_btn.setStyleSheet(browse_btn.styleSheet())
+        browse_out_btn = QPushButton("Browse")
+        browse_out_btn.setStyleSheet(btn_secondary_style)
         browse_out_btn.clicked.connect(self.browse_result_dir)
 
-        reload_res_btn = QPushButton("📂 Load")
-        reload_res_btn.setFixedHeight(26)
+        reload_res_btn = QPushButton("Load")
         reload_res_btn.setToolTip("Scan output_Result folder and load existing evaluations")
-        reload_res_btn.setStyleSheet(browse_btn.styleSheet())
+        reload_res_btn.setStyleSheet(btn_secondary_style)
         reload_res_btn.clicked.connect(self.load_existing_results)
 
         out_row.addWidget(out_lbl)
@@ -237,27 +251,31 @@ class ResultPanel(QWidget):
         eval_opts_layout.addStretch()
         e_layout.addLayout(eval_opts_layout)
 
-        # Run Batch Prediction Action Button
-        self.predict_btn = QPushButton("⚡ Run ResNet Batch Prediction")
-        self.predict_btn.setFixedHeight(32)
-        self.predict_btn.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        # Run Batch Prediction Action Button (matches FastSurfer, ICP, SPHARM primary action button)
+        self.predict_btn = QPushButton("Run ResNet Batch Prediction")
         self.predict_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3498db, stop:1 #2980b9);
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                padding: 4px 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 9px 15px;
+                border: 1px solid #ced6e0;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3a99d8, stop:1 #2471a3);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2471a3, stop:1 #1b4f72);
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
             QPushButton:disabled {
-                background: #bdc3c7;
-                color: #ecf0f1;
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
             }
         """)
         self.predict_btn.clicked.connect(self.run_batch_prediction)
@@ -300,36 +318,36 @@ class ResultPanel(QWidget):
         results_group = QGroupBox("3. Diagnostic Results & Evaluated Meshes")
         results_group.setStyleSheet("""
             QGroupBox {
-                font-weight: bold;
-                font-size: 11px;
-                color: #2c3e50;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-                margin-top: 8px;
-                padding-top: 8px;
+                border: 1px solid #dcdde1;
+                border-radius: 6px;
+                margin-top: 10px;
                 background-color: #ffffff;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 12px;
             }
         """)
         r_layout = QVBoxLayout(results_group)
+        r_layout.setContentsMargins(10, 16, 10, 10)
         r_layout.setSpacing(6)
 
-        # Tabs (All / Left / Right)
+        # Tabs (All / Left / Right) - matches FastSurfer, ICP, and SPHARM tabs
         self.tab_bar = QTabBar()
         self.tab_bar.addTab("All")
         self.tab_bar.addTab("Left (LH)")
         self.tab_bar.addTab("Right (RH)")
-        self.tab_bar.setExpanding(False)
+        self.tab_bar.setExpanding(True)
         self.tab_bar.setStyleSheet("""
             QTabBar::tab {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
                 color: #2c3e50;
-                padding: 4px 10px;
-                margin-right: 2px;
+                padding: 6px 14px;
+                margin-right: 3px;
                 font-weight: bold;
                 font-size: 11px;
                 border: 1px solid #ced6e0;
@@ -338,9 +356,9 @@ class ResultPanel(QWidget):
                 border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
-                color: white;
-                border: 1px solid #1f618d;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f1f2f6);
+                color: #2c3e50;
+                border: 1px solid #b2bec3;
                 border-bottom: none;
             }
             QTabBar::tab:hover:!selected {
@@ -350,26 +368,19 @@ class ResultPanel(QWidget):
         self.tab_bar.currentChanged.connect(self.on_tab_changed)
         r_layout.addWidget(self.tab_bar)
 
-        # Results Table with 5 Columns: Subject, Side, Diagnosis, Prob, Mesh (.vtk)
+        # Results Table with 5 Columns: Subject, Side, Diagnosis, Probability, Mesh (.vtk)
         self.results_table = ToggleTableWidget(0, 5)
         self.results_table.setHorizontalHeaderLabels([
-            "Subject", "Side", "Diagnosis", "Prob", "Mesh (.vtk)"
+            "Subject", "Side", "Diagnosis", "Probability", "Mesh (.vtk)"
         ])
         h_header = self.results_table.horizontalHeader()
-        h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        self.results_table.setColumnWidth(0, 80)
-        h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        self.results_table.setColumnWidth(1, 38)
-        h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.results_table.setColumnWidth(2, 65)
-        h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self.results_table.setColumnWidth(3, 48)
+        h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         h_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        h_header.setStretchLastSection(True)
         self.results_table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.results_table.horizontalScrollBar().setEnabled(False)
-        self.results_table.verticalHeader().setVisible(False)
         self.results_table.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #dcdde1;
@@ -384,13 +395,13 @@ class ResultPanel(QWidget):
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
-                padding: 4px 2px;
+                padding: 4px;
                 font-weight: bold;
                 border: 1px solid #dcdde1;
                 font-size: 11px;
             }
         """)
-        self.results_table.setFixedHeight(145)
+        self.results_table.setFixedHeight(185)
         self.results_table.itemSelectionChanged.connect(self.on_result_selected)
         r_layout.addWidget(self.results_table)
 
@@ -402,6 +413,7 @@ class ResultPanel(QWidget):
         cam_group = QGroupBox("4. 3D Grad-CAM & Atrophy Visualization")
         cam_group.setStyleSheet(header_group.styleSheet())
         c_layout = QVBoxLayout(cam_group)
+        c_layout.setContentsMargins(10, 16, 10, 10)
         c_layout.setSpacing(6)
 
         # Active view hemisphere
@@ -421,9 +433,9 @@ class ResultPanel(QWidget):
 
         # Visualization mode options
         c_layout.addWidget(QLabel("Colormap Heatmap Mode:"))
-        self.rb_dist = QRadioButton("🔵 Deformation Mag (mm)")
-        self.rb_signed = QRadioButton("⚪ Signed Atrophy (Inward/Expansion)")
-        self.rb_gradcam = QRadioButton("🔴 ResNet Grad-CAM Attention")
+        self.rb_dist = QRadioButton("Deformation Mag (mm)")
+        self.rb_signed = QRadioButton("Signed Atrophy (Inward/Expansion)")
+        self.rb_gradcam = QRadioButton("ResNet Grad-CAM Attention")
         self.rb_dist.setChecked(True)
 
         self.cam_mode_group = QButtonGroup(self)
@@ -455,23 +467,26 @@ class ResultPanel(QWidget):
         sd_title = QLabel("SD Trajectory:")
         sd_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #2c3e50;")
         
-        self.sd_reset_btn = QPushButton("🔄 Reset")
-        self.sd_reset_btn.setFixedHeight(22)
+        self.sd_reset_btn = QPushButton("Reset")
         self.sd_reset_btn.setToolTip("Reset latent SD trajectory to 0.0 SD (Mean) [Hotkeys: 0, R, Space, Home]")
         self.sd_reset_btn.setStyleSheet("""
             QPushButton {
-                background: #f8f9fa;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 10px;
                 font-weight: bold;
-                padding: 1px 6px;
+                font-size: 11px;
+                padding: 2px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                background: #ebf5fb;
-                border-color: #2980b9;
-                color: #2980b9;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
         """)
         self.sd_reset_btn.clicked.connect(lambda: self.set_sd_value(0.0))
@@ -496,20 +511,28 @@ class ResultPanel(QWidget):
 
         # Stepper buttons + Continuous Slider Row
         slider_row = QHBoxLayout()
-        self.sd_prev_btn = QPushButton("◀ -0.1 SD")
-        self.sd_prev_btn.setFixedHeight(24)
-        self.sd_prev_btn.setStyleSheet("""
+        sd_step_btn_style = """
             QPushButton {
-                background: #f1f2f6;
-                color: #2f3542;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 10px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
-                padding: 1px 5px;
+                font-size: 11px;
+                padding: 4px 8px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
             }
-            QPushButton:hover { background: #e4e7eb; }
-        """)
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
+        """
+        self.sd_prev_btn = QPushButton("-0.1 SD")
+        self.sd_prev_btn.setStyleSheet(sd_step_btn_style)
         self.sd_prev_btn.setToolTip("Step latent deformation backward by -0.1 SD (or press Left Arrow key)")
         self.sd_prev_btn.clicked.connect(lambda: self.step_sd(-0.1))
 
@@ -521,9 +544,8 @@ class ResultPanel(QWidget):
         self.sd_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sd_slider.valueChanged.connect(self.on_sd_slider_changed)
 
-        self.sd_next_btn = QPushButton("+0.1 SD ▶")
-        self.sd_next_btn.setFixedHeight(24)
-        self.sd_next_btn.setStyleSheet(self.sd_prev_btn.styleSheet())
+        self.sd_next_btn = QPushButton("+0.1 SD")
+        self.sd_next_btn.setStyleSheet(sd_step_btn_style)
         self.sd_next_btn.setToolTip("Step latent deformation forward by +0.1 SD (or press Right Arrow key)")
         self.sd_next_btn.clicked.connect(lambda: self.step_sd(+0.1))
 
@@ -537,15 +559,23 @@ class ResultPanel(QWidget):
         milestone_row.setSpacing(2)
         m_btn_style = """
             QPushButton {
-                background: #f8f9fa;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
-                border: 1px solid #dcdde1;
-                border-radius: 3px;
-                font-size: 9px;
                 font-weight: bold;
-                padding: 2px 1px;
+                font-size: 10px;
+                padding: 3px 2px;
+                border: 1px solid #ced6e0;
+                border-radius: 3px;
             }
-            QPushButton:hover { background: #e2e8f0; }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
+            }
         """
         btn_m3 = QPushButton("-3 SD")
         btn_m3.setToolTip("Severe Atrophy (-3.0 SD)")
@@ -563,7 +593,7 @@ class ResultPanel(QWidget):
         btn_p3.setToolTip("Expansion (+3.0 SD)")
 
         for b in (btn_m3, btn_m2, btn_m1, btn_mean, btn_p1, btn_p2, btn_p3):
-            b.setFixedHeight(22)
+            b.setFixedHeight(24)
             b.setStyleSheet(m_btn_style)
 
         btn_m3.clicked.connect(lambda: self.set_sd_value(-3.0))
@@ -584,7 +614,7 @@ class ResultPanel(QWidget):
         sd_box_layout.addLayout(milestone_row)
 
         # Keyboard helper hint
-        hint_lbl = QLabel("⌨️ <i>Hotkeys: <b>← / →</b> Step SD  |  <b>0 / R / Space</b> Reset</i>")
+        hint_lbl = QLabel("<i>Hotkeys: <b>Left / Right</b> Step SD  |  <b>0 / R / Space</b> Reset</i>")
         hint_lbl.setStyleSheet("font-size: 9px; color: #576574; font-style: italic;")
         sd_box_layout.addWidget(hint_lbl)
 
@@ -960,7 +990,7 @@ class ResultPanel(QWidget):
         self.all_evaluation_results = evaluated_results
         self.populate_results_table()
         self.predict_btn.setEnabled(True)
-        self.batch_status_hint.setText(f"✅ Evaluated all {total_subjs} meshes successfully. Saved to: {os.path.basename(out_dir)}")
+        self.batch_status_hint.setText(f"Evaluated all {total_subjs} meshes successfully. Saved to: {os.path.basename(out_dir)}")
         self.batch_status_hint.setStyleSheet("color: #27ae60; font-size: 11px; font-weight: bold;")
         self.signal_log_message.emit(f"SUCCESS: Batch evaluation completed for {total_subjs} subjects. Output folder: {out_dir}")
         self.signal_batch_prediction_finished.emit(True)
@@ -1081,7 +1111,7 @@ class ResultPanel(QWidget):
             if view_side == "left":
                 lh_res = record.get('left_result')
                 side_prob = lh_res['probability'] if (lh_res and lh_res.get('probability') is not None) else prob
-                diag_str = "🚨 TLE" if side_prob > 0.5 else "✅ HC"
+                diag_str = "TLE" if side_prob > 0.5 else "HC"
                 prob_str = f"{side_prob * 100:.1f}%"
                 side_str = "LH"
                 side_full = "Left (LH)"
@@ -1089,7 +1119,7 @@ class ResultPanel(QWidget):
             else:
                 rh_res = record.get('right_result')
                 side_prob = rh_res['probability'] if (rh_res and rh_res.get('probability') is not None) else prob
-                diag_str = "🚨 TLE" if side_prob > 0.5 else "✅ HC"
+                diag_str = "TLE" if side_prob > 0.5 else "HC"
                 prob_str = f"{side_prob * 100:.1f}%"
                 side_str = "RH"
                 side_full = "Right (RH)"
@@ -1104,6 +1134,11 @@ class ResultPanel(QWidget):
             item_side = QTableWidgetItem(side_str)
             item_side.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item_side.setToolTip(side_full)
+            if side_str == "LH" or view_side == "left":
+                item_side.setForeground(QColor("#2980b9"))
+            else:
+                item_side.setForeground(QColor("#d35400"))
+            item_side.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
 
             item_diag = QTableWidgetItem(diag_str)
             item_diag.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1128,6 +1163,8 @@ class ResultPanel(QWidget):
             self.results_table.setItem(row, 4, item_mesh)
 
         self.results_table.blockSignals(False)
+        self.results_table.resizeColumnsToContents()
+        self.results_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         if self.results_table.rowCount() > 0:
             self.results_table.selectRow(0)

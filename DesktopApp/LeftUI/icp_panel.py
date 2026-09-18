@@ -15,6 +15,7 @@ class ToggleTableWidget(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -197,7 +198,7 @@ class IcpPanel(QWidget):
         dir_layout.setSpacing(6)
 
         # Row A: Input Meshes (FastSurfer / Segmentation Folder)
-        in_lbl = QLabel("📥 Input Meshes (FastSurfer / Custom Mesh Folder):")
+        in_lbl = QLabel("Input Meshes (FastSurfer / Custom Mesh Folder):")
         in_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
         dir_layout.addWidget(in_lbl)
 
@@ -207,7 +208,7 @@ class IcpPanel(QWidget):
         self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
         in_row.addWidget(self.mesh_input_dir)
 
-        browse_in_btn = QPushButton("📁 Browse...")
+        browse_in_btn = QPushButton("Browse...")
         browse_in_btn.setToolTip("Import existing FastSurfer mesh folder from disk (skip previous steps)")
         browse_in_btn.setStyleSheet("""
             QPushButton {
@@ -228,7 +229,7 @@ class IcpPanel(QWidget):
         browse_in_btn.clicked.connect(self.browse_input_directory)
         in_row.addWidget(browse_in_btn)
 
-        reset_in_btn = QPushButton("🔄 Pipeline")
+        reset_in_btn = QPushButton("Pipeline")
         reset_in_btn.setToolTip("Reset input back to current Data Importer / FastSurfer pipeline output")
         reset_in_btn.setStyleSheet("""
             QPushButton {
@@ -252,7 +253,7 @@ class IcpPanel(QWidget):
         dir_layout.addLayout(in_row)
 
         # Row B: Output Directory (output_ICP)
-        out_lbl = QLabel("📤 Output Directory (Dedicated output_ICP):")
+        out_lbl = QLabel("Output Directory (Dedicated output_ICP):")
         out_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50; margin-top: 4px;")
         dir_layout.addWidget(out_lbl)
 
@@ -262,7 +263,7 @@ class IcpPanel(QWidget):
         self.icp_dir_input.textChanged.connect(self.populate_results_table)
         out_row.addWidget(self.icp_dir_input)
 
-        browse_out_btn = QPushButton("📁 Browse...")
+        browse_out_btn = QPushButton("Browse...")
         browse_out_btn.setToolTip("Select custom destination for output_ICP")
         browse_out_btn.setStyleSheet("""
             QPushButton {
@@ -283,7 +284,7 @@ class IcpPanel(QWidget):
         browse_out_btn.clicked.connect(self.browse_output_directory)
         out_row.addWidget(browse_out_btn)
 
-        reload_btn = QPushButton("🔄 Reload")
+        reload_btn = QPushButton("Reload")
         reload_btn.setToolTip("Scan output_ICP folder and reload results table")
         reload_btn.setStyleSheet("""
             QPushButton {
@@ -344,7 +345,7 @@ class IcpPanel(QWidget):
         icp_layout.addWidget(side_group)
 
         # 3. Main Action Button & Status Hint
-        self.run_icp_btn = QPushButton("▶ Run Groupwise ICP Registration")
+        self.run_icp_btn = QPushButton("Run Groupwise ICP Registration")
         self.run_icp_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -379,7 +380,7 @@ class IcpPanel(QWidget):
         icp_layout.addWidget(self.icp_status_hint)
 
         # 4. Collapsible Advanced Parameters
-        self.toggle_adv_btn = QPushButton("⚙️ Advanced Parameters ▾")
+        self.toggle_adv_btn = QPushButton("Advanced Parameters [+]")
         self.toggle_adv_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -589,6 +590,7 @@ class IcpPanel(QWidget):
                 border: 1px solid #dcdde1;
                 gridline-color: #ecf0f1;
                 font-size: 11px;
+                background-color: #ffffff;
             }
             QTableWidget::item:selected {
                 background-color: #3498db;
@@ -617,7 +619,7 @@ class IcpPanel(QWidget):
     def toggle_advanced_params(self):
         should_show = self.adv_container.isHidden()
         self.adv_container.setVisible(should_show)
-        self.toggle_adv_btn.setText("⚙️ Advanced Parameters ▴" if should_show else "⚙️ Advanced Parameters ▾")
+        self.toggle_adv_btn.setText("Advanced Parameters [-]" if should_show else "Advanced Parameters [+]")
 
     def on_icp_mode_changed(self, index):
         is_custom = (index == 1)
@@ -791,25 +793,16 @@ class IcpPanel(QWidget):
         
         if not has_lh and not has_rh:
             self.run_icp_btn.setEnabled(False)
-            msg = "[LOCKED] No FastSurfer mesh outputs found. Please select a folder with meshes (Browse) or run FastSurfer first."
-            self.run_icp_btn.setToolTip(msg)
-            self.icp_status_hint.setText(msg)
-            self.icp_status_hint.setStyleSheet("""
-                color: #c0392b; 
-                background-color: #fdedec; 
-                border: 1px solid #f5b7b1; 
-                font-size: 11px; 
-                padding: 6px 8px; 
-                border-radius: 4px;
-                font-weight: 500;
-            """)
+            self.run_icp_btn.setToolTip("")
+            self.icp_status_hint.setText("")
+            self.icp_status_hint.hide()
         else:
             self.run_icp_btn.setEnabled(True)
             self.run_icp_btn.setToolTip("Click to run Groupwise ICP Registration")
             lh_count = len(glob.glob(os.path.join(lh_dir, "*.nii*"))) if has_lh else 0
             rh_count = len(glob.glob(os.path.join(rh_dir, "*.nii*"))) if has_rh else 0
             src_type = "Custom Folder" if self.mesh_input_dir.text().strip() else "Pipeline"
-            msg = f"[OK] Ready ({src_type}): Detected {lh_count} Left & {rh_count} Right meshes. Results will be saved to: {target_out}"
+            msg = f"Ready ({src_type}): Detected {lh_count} Left & {rh_count} Right meshes. Results will be saved to: {target_out}"
             self.icp_status_hint.setText(msg)
             self.icp_status_hint.setStyleSheet("""
                 color: #1e8449; 
@@ -820,6 +813,7 @@ class IcpPanel(QWidget):
                 border-radius: 4px;
                 font-weight: 500;
             """)
+            self.icp_status_hint.show()
 
         self.populate_results_table()
 

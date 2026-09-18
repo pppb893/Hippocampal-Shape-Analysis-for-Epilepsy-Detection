@@ -165,7 +165,7 @@ class MainPanel(QWidget):
         config_group = QGroupBox("Pipeline Input & Output Configuration")
         config_group.setStyleSheet("""
             QGroupBox {
-                margin-top: 15px;
+                margin-top: 10px;
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
                 background-color: #f8f9fa;
@@ -180,14 +180,11 @@ class MainPanel(QWidget):
             }
         """)
         cg_layout = QVBoxLayout(config_group)
-        cg_layout.setContentsMargins(10, 20, 10, 10)
+        cg_layout.setContentsMargins(10, 16, 10, 10)
         cg_layout.setSpacing(8)
 
-        # Row 1: Choose Data Directory (MRI only) & Open File History
-        data_btn_row = QHBoxLayout()
-        data_btn_row.setSpacing(6)
-
-        dir_select_btn = QPushButton("📁 Choose MRI Data Directory")
+        # Row 1: Choose Data Directory (MRI only)
+        dir_select_btn = QPushButton("Choose MRI Data Directory")
         dir_select_btn.setToolTip("Select directory containing raw MRI scans (*.nii.gz, *.nii, *.mgz)")
         dir_select_btn.setStyleSheet("""
             QPushButton {
@@ -210,37 +207,11 @@ class MainPanel(QWidget):
             }
         """)
         dir_select_btn.clicked.connect(self.select_directory)
-        data_btn_row.addWidget(dir_select_btn, stretch=3)
-
-        self.history_btn = QPushButton("🕒 Open File History")
-        self.history_btn.setToolTip("View and select from previously chosen directories")
-        self.history_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 7px 8px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
-        """)
-        self.history_btn.clicked.connect(self.show_history_menu)
-        data_btn_row.addWidget(self.history_btn, stretch=2)
-
-        cg_layout.addLayout(data_btn_row)
+        cg_layout.addWidget(dir_select_btn)
+        self.history_btn = None
 
         # Row 2: Choose Output Directory
-        out_dir_btn = QPushButton("📂 Choose Output Directory")
+        out_dir_btn = QPushButton("Choose Output Directory")
         out_dir_btn.setToolTip("Select base output directory. Subfolders (fastsurfer, output_ICP, output_SPHARM) will be organized automatically.")
         out_dir_btn.setStyleSheet("""
             QPushButton {
@@ -276,7 +247,7 @@ class MainPanel(QWidget):
         self.folder_input = QLineEdit()
         self.folder_input.setReadOnly(True)
         self.folder_input.setPlaceholderText("Select folder with MRI scans (.nii.gz, .nii, .mgz)...")
-        self.folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        self.folder_input.setStyleSheet("background: white; border: 1px solid #ced6e0; border-radius: 4px; padding: 5px 8px; font-size: 11px;")
         input_col.addWidget(input_lbl)
         input_col.addWidget(self.folder_input)
         path_row.addLayout(input_col)
@@ -288,7 +259,7 @@ class MainPanel(QWidget):
         self.out_folder_input = QLineEdit()
         self.out_folder_input.setReadOnly(True)
         self.out_folder_input.setPlaceholderText("Select base output directory...")
-        self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ccc; border-radius: 3px; padding: 3px 5px; font-size: 11px;")
+        self.out_folder_input.setStyleSheet("background: white; border: 1px solid #ced6e0; border-radius: 4px; padding: 5px 8px; font-size: 11px;")
         output_col.addWidget(output_lbl)
         output_col.addWidget(self.out_folder_input)
         path_row.addLayout(output_col)
@@ -300,10 +271,10 @@ class MainPanel(QWidget):
         table_group = QGroupBox("Pipeline Subjects & Output Status")
         table_group.setStyleSheet("""
             QGroupBox {
-                margin-top: 15px;
+                margin-top: 10px;
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
-                background-color: #f8f9fa;
+                background-color: #ffffff;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -315,7 +286,7 @@ class MainPanel(QWidget):
             }
         """)
         tg_layout = QVBoxLayout(table_group)
-        tg_layout.setContentsMargins(10, 20, 10, 10)
+        tg_layout.setContentsMargins(10, 16, 10, 10)
         tg_layout.setSpacing(6)
 
         # Tab Bar for Hemisphere Filtering
@@ -328,8 +299,8 @@ class MainPanel(QWidget):
             QTabBar::tab {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
                 color: #2c3e50;
-                padding: 4px 10px;
-                margin-right: 2px;
+                padding: 6px 14px;
+                margin-right: 3px;
                 font-weight: bold;
                 font-size: 11px;
                 border: 1px solid #ced6e0;
@@ -338,9 +309,9 @@ class MainPanel(QWidget):
                 border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4fa3e3, stop:1 #2980b9);
-                color: white;
-                border: 1px solid #1f618d;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f1f2f6);
+                color: #2c3e50;
+                border: 1px solid #b2bec3;
                 border-bottom: none;
             }
             QTabBar::tab:hover:!selected {
@@ -367,21 +338,20 @@ class MainPanel(QWidget):
             QTableWidget {
                 background-color: white;
                 border: 1px solid #dcdde1;
-                border-radius: 4px;
                 font-size: 11px;
-                gridline-color: #f1f2f6;
+                gridline-color: #ecf0f1;
             }
             QTableWidget::item:selected {
                 background-color: #3498db;
                 color: white;
             }
             QHeaderView::section {
-                background-color: #ecf0f1;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
                 color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
                 padding: 4px;
+                font-weight: bold;
                 border: 1px solid #dcdde1;
+                font-size: 11px;
             }
         """)
         self.table.itemSelectionChanged.connect(self.on_table_row_selected)
@@ -392,7 +362,7 @@ class MainPanel(QWidget):
         workflow_group = QGroupBox("Pipeline Workflow Execution")
         workflow_group.setStyleSheet("""
             QGroupBox {
-                margin-top: 15px;
+                margin-top: 10px;
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
                 background-color: #f8f9fa;
@@ -407,26 +377,26 @@ class MainPanel(QWidget):
             }
         """)
         wg_layout = QVBoxLayout(workflow_group)
-        wg_layout.setContentsMargins(10, 18, 10, 10)
+        wg_layout.setContentsMargins(10, 16, 10, 10)
         wg_layout.setSpacing(8)
 
         # Progress Stages Display
         stages_layout = QVBoxLayout()
         stages_layout.setSpacing(4)
 
-        self.stage1_lbl = QLabel("  1️⃣ FastSurfer Hippocampal Segmentation:  ⏸ Pending")
+        self.stage1_lbl = QLabel("  1. FastSurfer Hippocampal Segmentation:  Pending")
         self.stage1_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage1_lbl)
 
-        self.stage2_lbl = QLabel("  2️⃣ Groupwise ICP Mesh Registration:         ⏸ Pending")
+        self.stage2_lbl = QLabel("  2. Groupwise ICP Mesh Registration:         Pending")
         self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage2_lbl)
 
-        self.stage3_lbl = QLabel("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Pending")
+        self.stage3_lbl = QLabel("  3. SPHARM-PDM Shape Analysis:            Pending")
         self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage3_lbl)
 
-        self.stage4_lbl = QLabel("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+        self.stage4_lbl = QLabel("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
         self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage4_lbl)
 
@@ -446,30 +416,31 @@ class MainPanel(QWidget):
         """)
         wg_layout.addWidget(self.status_lbl)
 
-        # Run Button
-        self.run_btn = QPushButton("▶ Run Full Pipeline (FastSurfer → ICP → SPHARM → Result)")
+        # Run Button (matches FastSurfer, ICP, SPHARM, Result panels)
+        self.run_btn = QPushButton("Run Full Pipeline (FastSurfer -> ICP -> SPHARM -> Result)")
         self.run_btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #27ae60, stop:1 #219a52);
-                color: white;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
+                color: #2c3e50;
                 font-weight: bold;
                 font-size: 12px;
                 padding: 10px 15px;
-                border: 1px solid #1e8449;
+                border: 1px solid #ced6e0;
                 border-radius: 5px;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);
-                border: 1px solid #196f3d;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
+                border: 1px solid #b2bec3;
+                color: #1a252f;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e8449, stop:1 #145a32);
-                border: 1px solid #145a32;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
+                border: 1px solid #95a5a6;
             }
             QPushButton:disabled {
-                background: #bdc3c7;
-                color: #7f8c8d;
-                border: 1px solid #95a5a6;
+                background: #f1f2f6;
+                color: #a4b0be;
+                border: 1px solid #dfe4ea;
             }
         """)
         self.run_btn.clicked.connect(self.run_full_pipeline)
@@ -535,13 +506,13 @@ class MainPanel(QWidget):
         """Checks output directory and previews which stages exist and which will be run."""
         out_dir = self.out_folder_input.text().strip()
         if not out_dir or not os.path.isdir(out_dir):
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ⏸ Pending")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Pending")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏸ Pending")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Pending")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Pending")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
             self.status_lbl.setText("Ready: Select Input MRI Directory & Output Directory to begin.")
             self.status_lbl.setStyleSheet("color: #2c3e50; background-color: #eaf2f8; border: 1px solid #d4e6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
@@ -551,60 +522,60 @@ class MainPanel(QWidget):
 
         # Stage 1 label
         if has_fs:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Results exist (Will skip)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Results exist (Will skip)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
         else:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ⏸ Missing (Will run first)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Missing (Will run first)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
 
         # Stage 2 label
         if has_icp:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Results exist (Will skip)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Results exist (Will skip)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
         elif has_fs:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏸ Missing (Will run next)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Missing (Will run next)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏸ Pending")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Pending")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         # Stage 3 label
         if has_spharm:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Results exist (Will skip)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Results exist (Will skip)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
         elif has_fs and has_icp:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Missing (Will run next)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Missing (Will run next)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Pending")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         # Stage 4 label
         if has_result:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Results exist (Will skip)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Results exist (Will skip)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
         elif has_fs and has_icp and has_spharm:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Missing (Will run next)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Missing (Will run next)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         # Status text summary
         if has_fs and has_icp and has_spharm and has_result:
-            self.status_lbl.setText("✓ Complete results exist in output folder. Running will refresh all tables without re-computing.")
+            self.status_lbl.setText("Complete results exist in output folder. Running will refresh all tables without re-computing.")
             self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and has_icp and has_spharm and not has_result:
             self.status_lbl.setText("FastSurfer, ICP & SPHARM results exist (Skipping 1-3). Running will execute ResNet Prediction & 3D Grad-CAM.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and has_icp and not has_spharm:
-            self.status_lbl.setText("FastSurfer & ICP results exist (Skipping both). Running will execute SPHARM-PDM → ResNet Prediction.")
+            self.status_lbl.setText("FastSurfer & ICP results exist (Skipping both). Running will execute SPHARM-PDM -> ResNet Prediction.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and not has_icp:
-            self.status_lbl.setText("FastSurfer results exist (Skipping FastSurfer). Running will execute ICP → SPHARM → ResNet Prediction.")
+            self.status_lbl.setText("FastSurfer results exist (Skipping FastSurfer). Running will execute ICP -> SPHARM -> ResNet Prediction.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         else:
-            self.status_lbl.setText("Ready to run full pipeline (FastSurfer → ICP → SPHARM → Result).")
+            self.status_lbl.setText("Ready to run full pipeline (FastSurfer -> ICP -> SPHARM -> Result).")
             self.status_lbl.setStyleSheet("color: #2c3e50; background-color: #eaf2f8; border: 1px solid #d4e6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
 
     @staticmethod
@@ -692,7 +663,7 @@ class MainPanel(QWidget):
                     # Left Hemisphere record: ONLY include if BOTH real SPHARM mesh and evaluated result exist
                     lh_spharm = self.find_spharm_mesh(out_dir, s_clean, "left")
                     if lh_spharm and left_prob is not None and lh_mesh and os.path.isfile(lh_mesh):
-                        diag_str = "🚨 Epilepsy (TLE)" if left_prob > 0.5 else "✅ Normal (HC)"
+                        diag_str = "Epilepsy (TLE)" if left_prob > 0.5 else "Normal (HC)"
                         prob_str = f"{left_prob * 100:.1f}%"
                         records.append({
                             "subject": s_clean,
@@ -708,7 +679,7 @@ class MainPanel(QWidget):
                     # Right Hemisphere record: ONLY include if BOTH real SPHARM mesh and evaluated result exist
                     rh_spharm = self.find_spharm_mesh(out_dir, s_clean, "right")
                     if rh_spharm and right_prob is not None and rh_mesh and os.path.isfile(rh_mesh):
-                        diag_str = "🚨 Epilepsy (TLE)" if right_prob > 0.5 else "✅ Normal (HC)"
+                        diag_str = "Epilepsy (TLE)" if right_prob > 0.5 else "Normal (HC)"
                         prob_str = f"{right_prob * 100:.1f}%"
                         records.append({
                             "subject": s_clean,
@@ -839,10 +810,10 @@ class MainPanel(QWidget):
             mri_files = self.find_valid_mri_files(folder)
             if not mri_files:
                 self.signal_log_message.emit(f"[WARNING] No MRI scan files (*.nii.gz, *.nii, *.mgz) found in: {folder}")
-                self.status_lbl.setText("⚠️ Warning: No valid MRI scan files (*.nii.gz, *.nii, *.mgz) found in selected directory.")
+                self.status_lbl.setText("Warning: No valid MRI scan files (*.nii.gz, *.nii, *.mgz) found in selected directory.")
                 self.status_lbl.setStyleSheet("color: #d35400; background-color: #fef9e7; border: 1px solid #f9e79f; padding: 6px 8px; border-radius: 4px;")
             else:
-                self.status_lbl.setText(f"✓ Detected {len(mri_files)} MRI image(s). Ready to process.")
+                self.status_lbl.setText(f"Detected {len(mri_files)} MRI image(s). Ready to process.")
                 self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px;")
 
             self.folder_input.setText(folder)
@@ -904,10 +875,10 @@ class MainPanel(QWidget):
             self.add_to_history(path)
             self.signal_log_message.emit(f"Main Panel selected directory from history: {path} (Found {len(mri_files)} MRI files)")
             if not mri_files:
-                self.status_lbl.setText("⚠️ Warning: No valid MRI scan files (*.nii.gz, *.nii, *.mgz) found.")
+                self.status_lbl.setText("Warning: No valid MRI scan files (*.nii.gz, *.nii, *.mgz) found.")
                 self.status_lbl.setStyleSheet("color: #d35400; background-color: #fef9e7; border: 1px solid #f9e79f; padding: 6px 8px; border-radius: 4px;")
             else:
-                self.status_lbl.setText(f"✓ Detected {len(mri_files)} MRI image(s). Ready to process.")
+                self.status_lbl.setText(f"Detected {len(mri_files)} MRI image(s). Ready to process.")
                 self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px;")
 
             if self.import_panel:
@@ -957,16 +928,16 @@ class MainPanel(QWidget):
         # "ถ้ามีผลลัพของ panel ครบทุก panel แล้วให้ข้ามได้เลยไม่ต้องทำ และให้แสดงผลลัพที่ตารางด้วย"
         # -------------------------------------------------------------
         if has_fs and has_icp and has_spharm and has_result:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Found existing results (Skipped)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Found existing results (Skipped)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Skipped)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
 
-            self.status_lbl.setText("🎉 All results already exist in output folder! Skipped execution and refreshed all tables.")
+            self.status_lbl.setText("All results already exist in output folder! Skipped execution and refreshed all tables.")
             self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: bold;")
             self.signal_log_message.emit(">>> [MAIN PIPELINE] Complete results for all panels (FastSurfer, ICP, SPHARM, Result) already exist in output folder. Skipping execution and populating all tables.")
 
@@ -986,30 +957,30 @@ class MainPanel(QWidget):
         if not has_fs:
             if not in_dir or not os.path.isdir(in_dir):
                 self.signal_log_message.emit("[ERROR] Main Panel: FastSurfer results missing. Please select a valid MRI Data Directory first.")
-                self.status_lbl.setText("❌ Error: FastSurfer results missing. Please select MRI data folder.")
+                self.status_lbl.setText("Error: FastSurfer results missing. Please select MRI data folder.")
                 self.status_lbl.setStyleSheet("color: #c0392b; background-color: #fdedec; border: 1px solid #f5b7b1; padding: 6px 8px; border-radius: 4px;")
                 return
 
             mri_files = self.find_valid_mri_files(in_dir)
             if not mri_files:
                 self.signal_log_message.emit(f"[ERROR] Main Panel: Selected directory '{in_dir}' contains no valid MRI files (*.nii.gz, *.nii, *.mgz).")
-                self.status_lbl.setText("❌ Error: Selected folder contains no MRI scans. Please choose MRI data.")
+                self.status_lbl.setText("Error: Selected folder contains no MRI scans. Please choose MRI data.")
                 self.status_lbl.setStyleSheet("color: #c0392b; background-color: #fdedec; border: 1px solid #f5b7b1; padding: 6px 8px; border-radius: 4px;")
                 return
 
         self.is_running = True
         self.run_btn.setEnabled(False)
-        self.run_btn.setText("⏳ Running Pipeline...")
+        self.run_btn.setText("Running Pipeline...")
 
         # -------------------------------------------------------------
         # Condition B: FastSurfer, ICP & SPHARM exist, but Result is missing
         # -------------------------------------------------------------
         if has_fs and has_icp and has_spharm and not has_result:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Found existing results (Skipped)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Found existing results (Skipped)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.fastsurfer_panel:
                 self.fastsurfer_panel.populate_results_table()
@@ -1026,25 +997,25 @@ class MainPanel(QWidget):
         # Condition C: FastSurfer & ICP exist, but SPHARM is missing
         # -------------------------------------------------------------
         if has_fs and has_icp and not has_spharm:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Found existing results (Skipped)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Found existing results (Skipped)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.fastsurfer_panel:
                 self.fastsurfer_panel.populate_results_table()
             if self.icp_panel:
                 self.icp_panel.populate_results_table()
 
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏳ In Progress...")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
             if has_result:
-                self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Will skip)")
+                self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Will skip)")
                 self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             else:
-                self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+                self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
                 self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
-            self.status_lbl.setText("🚀 FastSurfer & ICP results exist (Skipped). Running SPHARM-PDM Processing...")
+            self.status_lbl.setText("FastSurfer & ICP results exist (Skipped). Running SPHARM-PDM Processing...")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
             self.signal_log_message.emit(">>> [MAIN PIPELINE] Existing FastSurfer and ICP results detected (Skipped). Starting SPHARM-PDM Processing...")
 
@@ -1061,27 +1032,27 @@ class MainPanel(QWidget):
         # Condition D: FastSurfer exists, but ICP is missing
         # -------------------------------------------------------------
         if has_fs and not has_icp:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Found existing results (Skipped)")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Found existing results (Skipped)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.fastsurfer_panel:
                 self.fastsurfer_panel.populate_results_table()
 
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏳ In Progress...")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         In Progress...")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
             if has_spharm:
-                self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Will skip)")
+                self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Will skip)")
                 self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             else:
-                self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Pending")
+                self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
                 self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
             if has_result:
-                self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Will skip)")
+                self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Will skip)")
                 self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             else:
-                self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+                self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
                 self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
-            self.status_lbl.setText("🚀 FastSurfer results exist (Skipped). Running Groupwise ICP Registration...")
+            self.status_lbl.setText("FastSurfer results exist (Skipped). Running Groupwise ICP Registration...")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
             self.signal_log_message.emit(">>> [MAIN PIPELINE] Existing FastSurfer results detected (Skipping FastSurfer). Starting Groupwise ICP Registration...")
 
@@ -1097,17 +1068,17 @@ class MainPanel(QWidget):
         # -------------------------------------------------------------
         # Condition E: FastSurfer missing -> Run from Stage 1: FastSurfer
         # -------------------------------------------------------------
-        self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ⏳ In Progress...")
+        self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  In Progress...")
         self.stage1_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-        self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏸ Pending")
+        self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Pending")
         self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏸ Pending")
+        self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
         self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏸ Pending")
+        self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
         self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         mri_count = len(self.find_valid_mri_files(in_dir)) if in_dir else 0
-        self.status_lbl.setText(f"🚀 Step 1/4: Running FastSurfer Segmentation on {mri_count} MRI scans...")
+        self.status_lbl.setText(f"Step 1/4: Running FastSurfer Segmentation on {mri_count} MRI scans...")
         self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         self.signal_log_message.emit(f">>> [MAIN PIPELINE] Starting FastSurfer Segmentation on {mri_count} MRI scans...")
 
@@ -1124,14 +1095,14 @@ class MainPanel(QWidget):
             return
 
         if not success:
-            self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ❌ Failed")
+            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Failed")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #c0392b; font-weight: bold;")
-            self.status_lbl.setText("❌ Pipeline stopped: FastSurfer Segmentation encountered an error.")
+            self.status_lbl.setText("Pipeline stopped: FastSurfer Segmentation encountered an error.")
             self.status_lbl.setStyleSheet("color: #c0392b; background-color: #fdedec; border: 1px solid #f5b7b1; padding: 6px 8px; border-radius: 4px;")
             self.reset_run_state()
             return
 
-        self.stage1_lbl.setText("  1️⃣ FastSurfer Hippocampal Segmentation:  ✓ Completed")
+        self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Completed")
         self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
 
         # Populate FastSurfer results table
@@ -1144,11 +1115,11 @@ class MainPanel(QWidget):
         _, has_icp, has_spharm, has_result = self.check_existing_stages(out_dir)
 
         if has_icp and has_spharm and has_result:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Skipped)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.icp_panel:
                 self.icp_panel.populate_results_table()
@@ -1159,9 +1130,9 @@ class MainPanel(QWidget):
             self.on_result_finished_step(True)
             return
         elif has_icp and has_spharm and not has_result:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.icp_panel:
                 self.icp_panel.populate_results_table()
@@ -1170,13 +1141,13 @@ class MainPanel(QWidget):
             self.run_result_step(out_dir)
             return
         elif has_icp and not has_spharm:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Found existing results (Skipped)")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.icp_panel:
                 self.icp_panel.populate_results_table()
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏳ In Progress...")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-            self.status_lbl.setText("🚀 Step 3/4: Running SPHARM-PDM Processing (ICP skipped, results exist)...")
+            self.status_lbl.setText("Step 3/4: Running SPHARM-PDM Processing (ICP skipped, results exist)...")
             self.signal_log_message.emit(">>> [MAIN PIPELINE] ICP results already exist. Starting SPHARM-PDM Processing...")
             if self.spharm_panel:
                 self.spharm_panel.update_run_button_state()
@@ -1186,9 +1157,9 @@ class MainPanel(QWidget):
             return
 
         # Step 2: ICP Registration
-        self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ⏳ In Progress...")
+        self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         In Progress...")
         self.stage2_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-        self.status_lbl.setText("🚀 Step 2/4: Running Groupwise ICP Registration...")
+        self.status_lbl.setText("Step 2/4: Running Groupwise ICP Registration...")
         self.signal_log_message.emit(">>> [MAIN PIPELINE] FastSurfer step completed. Starting Groupwise ICP Registration...")
 
         if self.icp_panel:
@@ -1203,14 +1174,14 @@ class MainPanel(QWidget):
             return
 
         if not success:
-            self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ❌ Failed")
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Failed")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #c0392b; font-weight: bold;")
-            self.status_lbl.setText("❌ Pipeline stopped: Groupwise ICP Registration encountered an error.")
+            self.status_lbl.setText("Pipeline stopped: Groupwise ICP Registration encountered an error.")
             self.status_lbl.setStyleSheet("color: #c0392b; background-color: #fdedec; border: 1px solid #f5b7b1; padding: 6px 8px; border-radius: 4px;")
             self.reset_run_state()
             return
 
-        self.stage2_lbl.setText("  2️⃣ Groupwise ICP Mesh Registration:         ✓ Completed")
+        self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Completed")
         self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
 
         # Populate ICP results table
@@ -1223,9 +1194,9 @@ class MainPanel(QWidget):
         _, _, has_spharm, has_result = self.check_existing_stages(out_dir)
 
         if has_spharm and has_result:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Skipped)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.spharm_panel:
                 self.spharm_panel.populate_results_table()
@@ -1234,7 +1205,7 @@ class MainPanel(QWidget):
             self.on_result_finished_step(True)
             return
         elif has_spharm and not has_result:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Found existing results (Skipped)")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.spharm_panel:
                 self.spharm_panel.populate_results_table()
@@ -1242,9 +1213,9 @@ class MainPanel(QWidget):
             return
 
         # Step 3: SPHARM Processing
-        self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⏳ In Progress...")
+        self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
         self.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-        self.status_lbl.setText("🚀 Step 3/4: Running SPHARM-PDM Processing...")
+        self.status_lbl.setText("Step 3/4: Running SPHARM-PDM Processing...")
         self.signal_log_message.emit(">>> [MAIN PIPELINE] ICP step completed. Starting SPHARM-PDM Processing...")
 
         if self.spharm_panel:
@@ -1259,12 +1230,12 @@ class MainPanel(QWidget):
             return
 
         if not success:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ⚠️ Finished with warnings")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Finished with warnings")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #d35400; font-weight: bold;")
-            self.status_lbl.setText("⚠️ SPHARM-PDM finished with warnings or errors.")
+            self.status_lbl.setText("SPHARM-PDM finished with warnings or errors.")
             self.status_lbl.setStyleSheet("color: #d35400; background-color: #fef9e7; border: 1px solid #f9e79f; padding: 6px 8px; border-radius: 4px;")
         else:
-            self.stage3_lbl.setText("  3️⃣ SPHARM-PDM Shape Analysis:            ✓ Completed")
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Completed")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
 
         # Populate all previous stages tables
@@ -1284,7 +1255,7 @@ class MainPanel(QWidget):
         _, _, _, has_result = self.check_existing_stages(out_dir)
 
         if has_result:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Found existing results (Skipped)")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.result_panel and hasattr(self.result_panel, 'load_existing_results'):
                 self.result_panel.load_existing_results()
@@ -1296,9 +1267,9 @@ class MainPanel(QWidget):
 
     def run_result_step(self, out_dir):
         """Executes Step 4: Result Panel ResNet Batch Prediction & 3D Grad-CAM generation."""
-        self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⏳ In Progress...")
+        self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: In Progress...")
         self.stage4_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-        self.status_lbl.setText("🚀 Step 4/4: Running ResNet Epilepsy Prediction & 3D Grad-CAM...")
+        self.status_lbl.setText("Step 4/4: Running ResNet Epilepsy Prediction & 3D Grad-CAM...")
         self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         self.signal_log_message.emit(">>> [MAIN PIPELINE] SPHARM step completed. Starting ResNet Epilepsy Prediction & 3D Grad-CAM...")
 
@@ -1317,14 +1288,14 @@ class MainPanel(QWidget):
             return
 
         if not success:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ⚠️ Finished with warnings")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Finished with warnings")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #d35400; font-weight: bold;")
-            self.status_lbl.setText("⚠️ ResNet Prediction & Grad-CAM finished with warnings or errors.")
+            self.status_lbl.setText("ResNet Prediction & Grad-CAM finished with warnings or errors.")
             self.status_lbl.setStyleSheet("color: #d35400; background-color: #fef9e7; border: 1px solid #f9e79f; padding: 6px 8px; border-radius: 4px;")
         else:
-            self.stage4_lbl.setText("  4️⃣ ResNet Epilepsy Prediction & 3D Grad-CAM: ✓ Completed")
+            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Completed")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.status_lbl.setText("🎉 Complete Pipeline (All 4 Stages) Finished Successfully!")
+            self.status_lbl.setText("Complete Pipeline (All 4 Stages) Finished Successfully!")
             self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: bold;")
             self.signal_log_message.emit(">>> [MAIN PIPELINE] All 4 pipeline stages (FastSurfer, ICP, SPHARM, Result) completed successfully!")
 
@@ -1347,4 +1318,4 @@ class MainPanel(QWidget):
     def reset_run_state(self):
         self.is_running = False
         self.run_btn.setEnabled(True)
-        self.run_btn.setText("▶ Run Full Pipeline (FastSurfer → ICP → SPHARM → Result)")
+        self.run_btn.setText("Run Full Pipeline (FastSurfer -> ICP -> SPHARM -> Result)")
