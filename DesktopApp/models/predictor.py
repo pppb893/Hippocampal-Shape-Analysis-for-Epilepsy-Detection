@@ -160,6 +160,11 @@ class HippocampalPredictor:
     Inference helper for Epilepsy Detection from Hippocampal Shape Features.
     Supports Left and Right models with ResNet1D + PLS-DA pipeline.
     """
+    _shared_models = {}
+    _shared_scalers = {}
+    _shared_pls_models = {}
+    _shared_pipelines = {}
+
     def __init__(self, models_root: str = None, device: str = None):
         if models_root is None:
             models_root = os.path.dirname(os.path.abspath(__file__))
@@ -170,13 +175,15 @@ class HippocampalPredictor:
         else:
             self.device = torch.device(device)
             
-        self.models = {}
-        self.scalers = {}
-        self.pls_models = {}
-        self.pipelines = {}
+        self.models = HippocampalPredictor._shared_models
+        self.scalers = HippocampalPredictor._shared_scalers
+        self.pls_models = HippocampalPredictor._shared_pls_models
+        self.pipelines = HippocampalPredictor._shared_pipelines
 
     def is_model_available(self, side: str) -> bool:
         side = side.lower()
+        if side in self.models:
+            return True
         side_dir = os.path.join(self.models_root, side)
         pth_path = os.path.join(side_dir, f"resnet_model_{side}.pth")
         pipeline_path = os.path.join(side_dir, f"pipeline_{side}.joblib")

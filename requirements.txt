@@ -8,3 +8,6 @@ scipy>=1.11.0
 pandas
 matplotlib
 PyQt6>=6.0.0
+torch
+scikit-learn
+joblib

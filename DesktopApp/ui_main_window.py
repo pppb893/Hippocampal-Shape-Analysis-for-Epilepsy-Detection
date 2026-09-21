@@ -233,7 +233,6 @@ class MainWindow(QMainWindow):
         self.log("SlicerSALT-style UI initialized successfully.")
         
         self.check_slicer_salt()
-        self.showMaximized()
 
     def create_menus_and_toolbar(self):
         menubar = self.menuBar()

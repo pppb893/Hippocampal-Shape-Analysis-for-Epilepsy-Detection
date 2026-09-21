@@ -40,13 +40,7 @@ from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap, QColor, QFont, QPainter, QPen
 from PyQt6.QtCore import Qt, QLocale
 
-from ui_main_window import MainWindow
-import vtk
-
 if __name__ == "__main__":
-    # Suppress annoying VTK OpenGL context warnings on Windows (wglMakeCurrent error 6)
-    vtk.vtkObject.GlobalWarningDisplayOff()
-    
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     
@@ -56,11 +50,10 @@ if __name__ == "__main__":
     # ----------------------------------------------------
     # Splash Screen (Slicer/SlicerSALT style startup)
     # ----------------------------------------------------
-    # Create a dynamic pixmap for the splash screen
     pixmap = QPixmap(600, 350)
     pixmap.fill(QColor("#2c3e50")) # Dark blue Slicer-style background
     
-    # Draw a simple logo/title directly on the splash image
+    # Draw title directly on the splash image
     painter = QPainter(pixmap)
     painter.setPen(QPen(QColor("white")))
     painter.setFont(QFont("Arial", 20, QFont.Weight.Bold))
@@ -70,25 +63,42 @@ if __name__ == "__main__":
     splash = QSplashScreen(pixmap)
     splash.setFont(QFont("Arial", 11, QFont.Weight.Bold))
     splash.show()
-    
-    # Simulate loading steps with visual feedback
-    splash.showMessage("Starting Hippocampal Shape Analysis Pipeline...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
     app.processEvents()
-    time.sleep(0.6)
     
+    # 1. Real Loading: VTK Rendering Engine
     splash.showMessage("Loading VTK Rendering Engine...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
     app.processEvents()
-    time.sleep(0.6)
+    import vtk
+    vtk.vtkObject.GlobalWarningDisplayOff()
     
+    # 2. Real Loading: System Requirements & SlicerSALT Verification
     splash.showMessage("Checking System Requirements & SlicerSALT...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
     app.processEvents()
-    time.sleep(0.6)
+    import glob
+    import torch
+    accel_text = "GPU / CUDA" if torch.cuda.is_available() else "CPU"
     
+    # 3. Real Loading: Pre-load Deep Learning Models (ResNet1D & PLS-DA)
+    splash.showMessage(f"Loading Deep Learning Predictor ({accel_text})...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+    app.processEvents()
+    try:
+        from models.predictor import HippocampalPredictor
+        predictor = HippocampalPredictor()
+        if predictor.is_model_available("left"):
+            splash.showMessage(f"Loading Left Hippocampal Model ({accel_text})...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+            app.processEvents()
+            predictor.load_model("left")
+        if predictor.is_model_available("right"):
+            splash.showMessage(f"Loading Right Hippocampal Model ({accel_text})...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+            app.processEvents()
+            predictor.load_model("right")
+    except Exception as e:
+        print(f"[Warning] Model pre-loading: {e}")
+    
+    # 4. Real Loading: User Interface & 3D Viewport Modules
     splash.showMessage("Initializing User Interface Modules...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
     app.processEvents()
-    time.sleep(0.4)
-    
-    # Initialize the heavy main window
+    from ui_main_window import MainWindow
     window = MainWindow()
     
     # Close splash and show main window maximized
