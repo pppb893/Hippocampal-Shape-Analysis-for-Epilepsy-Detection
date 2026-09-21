@@ -263,7 +263,7 @@ class ImportPanel(QWidget):
         import_layout.addWidget(subj_group)
 
     def load_history(self):
-        self.history_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_history.json")
+        self.history_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "app_history.json")
         self.recent_dirs = []
         self.last_input_dir = None
         self.last_output_dir = None

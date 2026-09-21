@@ -39,7 +39,7 @@ class ToggleTableWidget(QTableWidget):
 def get_project_root():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 class FastSurferWorker(QThread):
     signal_log = pyqtSignal(str)
@@ -55,7 +55,18 @@ class FastSurferWorker(QThread):
         root_dir = get_project_root()
         pipeline_script = os.path.join(root_dir, "run_pipeline.py")
         if not os.path.isfile(pipeline_script):
-            pipeline_script = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "run_pipeline.py"))
+            cand = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "run_pipeline.py"))
+            if os.path.isfile(cand):
+                pipeline_script = cand
+            else:
+                cand2 = os.path.join(root_dir, "FastSurfer", "run_pipeline.py")
+                if os.path.isfile(cand2):
+                    pipeline_script = cand2
+
+        if not os.path.isfile(pipeline_script):
+            self.signal_log.emit(f"[ERROR] run_pipeline.py not found at: {pipeline_script}")
+            self.signal_finished.emit(False)
+            return
         
         try:
             cmd = [sys.executable, pipeline_script, "--input_dir", self.input_dir]
@@ -64,6 +75,7 @@ class FastSurferWorker(QThread):
             
             process = subprocess.Popen(
                 cmd,
+                cwd=root_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -424,6 +436,8 @@ class FastsurferPanel(QWidget):
         self.worker.signal_log.connect(self.signal_log_message.emit)
         self.worker.signal_finished.connect(self.on_fastsurfer_finished)
         self.worker.start()
+
+    run_process = run_fastsurfer_process
 
     def on_fastsurfer_finished(self, success):
         self.update_run_button_state()

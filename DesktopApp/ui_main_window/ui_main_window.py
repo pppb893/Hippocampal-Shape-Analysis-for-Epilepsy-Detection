@@ -1,13 +1,19 @@
+import os
 import sys
+import time
+import csv
+import glob
 import webbrowser
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 
-                             QLabel, QComboBox, QMessageBox, QTextEdit, QPushButton, 
-                             QCheckBox, QApplication, QScrollArea, QFrame, QLineEdit, QPlainTextEdit)
-from PyQt6.QtGui import QAction
+                             QMessageBox, QApplication, QScrollArea, QFrame, 
+                             QLineEdit, QTextEdit, QPlainTextEdit, QFileDialog)
 from PyQt6.QtCore import Qt, QEvent
 
 from LeftUI.left_panel import LeftPanel
 from RightUI.right_panel import RightPanel
+from .dialogs import PreferencesDialog, AboutDialog, DiagnosticsDialog
+from .console_widget import ExecutionConsole
+from .menu_toolbar import setup_menus_and_toolbar
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -15,8 +21,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Hippocampal Shape Analysis Pipeline (Slicer-style)")
         self.resize(1200, 800)
 
-        self.create_menus_and_toolbar()
+        # 1. Menus and Toolbar (delegated to menu_toolbar.py)
+        setup_menus_and_toolbar(self)
 
+        # 2. Central Layout with Splitters
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
@@ -33,9 +41,7 @@ class MainWindow(QMainWindow):
                 border-top: 1px solid #4a627a;
                 border-bottom: 1px solid #243342;
             }
-            QSplitter::handle:vertical:hover {
-                background: #3498db;
-            }
+            QSplitter::handle:vertical:hover { background: #3498db; }
         """)
         main_layout.addWidget(self.v_splitter)
 
@@ -46,15 +52,14 @@ class MainWindow(QMainWindow):
                 background: #dcdde1;
                 width: 6px;
             }
-            QSplitter::handle:horizontal:hover {
-                background: #3498db;
-            }
+            QSplitter::handle:horizontal:hover { background: #3498db; }
         """)
 
+        # 3. Panels
         self.left_panel = LeftPanel()
         self.right_panel = RightPanel(self)
 
-        # Wrap LeftPanel in a scroll area so it doesn't get clipped and allows free vertical resizing
+        # Wrap LeftPanel in scroll area
         self.left_scroll = QScrollArea()
         self.left_scroll.setWidgetResizable(True)
         self.left_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -62,8 +67,9 @@ class MainWindow(QMainWindow):
         self.left_scroll.horizontalScrollBar().setEnabled(False)
         self.left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.left_scroll.setWidget(self.left_panel)
+        self.left_scroll.setMinimumWidth(380)
 
-        # Wrap RightPanel in a scroll area so the 4 viewports maintain their dimensions and don't squish
+        # Wrap RightPanel in scroll area
         self.right_scroll = QScrollArea()
         self.right_scroll.setWidgetResizable(True)
         self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -73,128 +79,19 @@ class MainWindow(QMainWindow):
         self.right_panel.setMinimumWidth(500)
         self.right_scroll.setWidget(self.right_panel)
 
-        self.left_scroll.setMinimumWidth(380)
         self.h_splitter.addWidget(self.left_scroll)
         self.h_splitter.addWidget(self.right_scroll)
         self.h_splitter.setSizes([450, 830])
         self.saved_h_splitter_sizes = [450, 830]
         self.h_splitter.splitterMoved.connect(self.on_h_splitter_moved)
-        
-        self.v_splitter.addWidget(self.h_splitter)
-        
-        # Enhanced Execution Console Widget
-        self.console_widget = QWidget()
-        console_layout = QVBoxLayout(self.console_widget)
-        console_layout.setContentsMargins(6, 6, 6, 6)
-        console_layout.setSpacing(6)
-        
-        # Console Header Toolbar
-        console_header = QHBoxLayout()
-        console_header.setContentsMargins(2, 0, 2, 0)
-        console_header.setSpacing(8)
-        
-        console_title = QLabel("Terminal & Execution Console")
-        console_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #2c3e50;")
-        console_header.addWidget(console_title)
-        
-        self.console_status_lbl = QLabel("Ready")
-        self.console_status_lbl.setStyleSheet("color: #7f8c8d; font-size: 11px; padding-left: 4px;")
-        console_header.addWidget(self.console_status_lbl)
-        
-        console_header.addStretch()
-        
-        self.auto_scroll_cb = QCheckBox("Auto-scroll")
-        self.auto_scroll_cb.setChecked(True)
-        self.auto_scroll_cb.setStyleSheet("color: #34495e; font-size: 11px;")
-        console_header.addWidget(self.auto_scroll_cb)
-        
-        copy_btn = QPushButton("Copy All")
-        copy_btn.setFixedHeight(24)
-        copy_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f2f6;
-                color: #2f3542;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 11px;
-                padding: 2px 8px;
-            }
-            QPushButton:hover { background: #e4e7eb; }
-        """)
-        copy_btn.clicked.connect(self.copy_console_logs)
-        console_header.addWidget(copy_btn)
-        
-        clear_btn = QPushButton("Clear")
-        clear_btn.setFixedHeight(24)
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f2f6;
-                color: #2f3542;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 11px;
-                padding: 2px 8px;
-            }
-            QPushButton:hover { background: #e4e7eb; color: #e74c3c; }
-        """)
-        clear_btn.clicked.connect(self.clear_console_logs)
-        console_header.addWidget(clear_btn)
-        
-        self.expand_btn = QPushButton("Expand")
-        self.expand_btn.setFixedHeight(24)
-        self.expand_btn.setToolTip("Expand terminal to full screen covering workspace")
-        self.expand_btn.setStyleSheet("""
-            QPushButton {
-                background: #34495e;
-                color: white;
-                border: 1px solid #2c3e50;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 2px 10px;
-            }
-            QPushButton:hover { background: #415b76; }
-        """)
-        self.expand_btn.clicked.connect(self.toggle_console_expand)
-        console_header.addWidget(self.expand_btn)
 
-        close_btn = QPushButton("✕")
-        close_btn.setFixedHeight(24)
-        close_btn.setFixedWidth(24)
-        close_btn.setToolTip("Hide Terminal (Show again via View menu)")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #7f8c8d;
-                border: 1px solid #ced6e0;
-                border-radius: 3px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background: #e74c3c; color: white; border-color: #c0392b; }
-        """)
-        close_btn.clicked.connect(lambda: self.set_terminal_visible(False))
-        console_header.addWidget(close_btn)
-        
-        console_layout.addLayout(console_header)
-        
-        self.log_window = QTextEdit()
-        self.log_window.setReadOnly(True)
-        self.log_window.setStyleSheet("""
-            QTextEdit {
-                background-color: #161b22;
-                color: #e6edf3;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
-                border: 1px solid #30363d;
-                border-radius: 4px;
-                padding: 6px;
-            }
-        """)
-        console_layout.addWidget(self.log_window)
-        
-        self.v_splitter.addWidget(self.console_widget)
+        self.v_splitter.addWidget(self.h_splitter)
+
+        # 4. Execution Console Widget
+        self.console = ExecutionConsole(self)
+        self.console.signal_close_requested.connect(lambda: self.set_terminal_visible(False))
+        self.console.signal_expand_requested.connect(self.toggle_console_expand)
+        self.v_splitter.addWidget(self.console)
         self.v_splitter.setStretchFactor(0, 1)
         self.v_splitter.setStretchFactor(1, 0)
         self.v_splitter.setSizes([600, 135])
@@ -203,7 +100,7 @@ class MainWindow(QMainWindow):
         self.is_terminal_fullscreen = False
         self.saved_splitter_sizes = [600, 135]
 
-        # Connect signals between panels
+        # 5. Connect Signals Between Panels
         self.left_panel.signal_subject_selected.connect(self.right_panel.display_subject)
         self.left_panel.signal_mesh_selected.connect(self.right_panel.display_mesh)
         self.left_panel.signal_log_message.connect(self.log)
@@ -222,126 +119,219 @@ class MainWindow(QMainWindow):
             self.right_panel.signal_step_sd.connect(self.on_step_sd_requested)
         if hasattr(self.right_panel, 'signal_reset_sd'):
             self.right_panel.signal_reset_sd.connect(self.on_reset_sd_requested)
-        self.module_combo.currentTextChanged.connect(self.on_module_changed)
 
-        # Set initial view mode based on current module selection
+        self.module_combo.currentTextChanged.connect(self.on_module_changed)
         self.on_module_changed(self.module_combo.currentText())
 
-        # Global event filter to ensure arrow keys scrub SD cleanly without scrolling Left UI
+        # Event filter to ensure arrow keys scrub SD cleanly
         QApplication.instance().installEventFilter(self)
 
         self.log("SlicerSALT-style UI initialized successfully.")
-        
         self.check_slicer_salt()
 
-    def create_menus_and_toolbar(self):
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
-        edit_menu = menubar.addMenu("Edit")
-        view_menu = menubar.addMenu("View")
+    # ====================================================
+    # Action Handler Slots
+    # ====================================================
+    def open_dataset_folder(self):
+        self.module_combo.setCurrentText("Data Importer")
+        if hasattr(self.left_panel, 'import_panel'):
+            self.left_panel.import_panel.select_directory()
 
-        exit_action = QAction("Exit", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-        
-        # Add basic Edit actions
-        undo_action = QAction("Undo", self)
-        redo_action = QAction("Redo", self)
-        preferences_action = QAction("Preferences...", self)
-        edit_menu.addAction(undo_action)
-        edit_menu.addAction(redo_action)
-        edit_menu.addSeparator()
-        edit_menu.addAction(preferences_action)
-        
-        # Add basic View actions
-        toggle_toolbar_action = QAction("Toggle Toolbar", self, checkable=True)
-        toggle_toolbar_action.setChecked(True)
-        reset_view_action = QAction("Reset View", self)
-        
-        self.toggle_terminal_action = QAction("Terminal / Console", self, checkable=True)
-        self.toggle_terminal_action.setChecked(True)
-        self.toggle_terminal_action.triggered.connect(self.set_terminal_visible)
+    def choose_output_folder(self):
+        self.module_combo.setCurrentText("Data Importer")
+        if hasattr(self.left_panel, 'import_panel'):
+            self.left_panel.import_panel.select_output_directory()
 
-        view_menu.addAction(toggle_toolbar_action)
-        view_menu.addAction(self.toggle_terminal_action)
-        view_menu.addSeparator()
-        view_menu.addAction(reset_view_action)
+    def open_single_mesh(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open 3D Mesh File", "", "3D Mesh Files (*.vtk *.stl *.ply);;All Files (*)"
+        )
+        if filepath:
+            self.right_panel.set_view_mode("full_3d")
+            self.right_panel.display_mesh(filepath)
+            self.log(f"Opened single 3D mesh: {os.path.basename(filepath)}")
 
-        toolbar = self.addToolBar("Main Toolbar")
-        toolbar.setMovable(False)
+    def capture_3d_screenshot(self):
+        default_name = f"hippocampus_render_{int(time.time())}.png"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save 3D Viewport Screenshot", default_name, "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+        )
+        if filepath:
+            vtkWidget = getattr(self.right_panel.viewer, 'mesh_vtkWidget', None)
+            if vtkWidget:
+                pixmap = vtkWidget.grab()
+                if pixmap.save(filepath):
+                    self.log(f"3D Screenshot saved successfully: {filepath}")
+                    self.console.set_status(f"Snapshot saved: {os.path.basename(filepath)}", "#2ecc71")
+                else:
+                    self.log(f"[ERROR] Failed to save screenshot to {filepath}")
 
-        save_action = QAction("Save", self)
-        toolbar.addAction(save_action)
-        
-        toolbar.addSeparator()
+    def export_predictions_csv(self):
+        rp = getattr(self.left_panel, 'result_panel', None)
+        if not rp or not getattr(rp, 'all_evaluation_results', None):
+            QMessageBox.information(
+                self, "Export Results",
+                "No prediction results available to export yet.\nPlease run inference in the Result Panel first."
+            )
+            return
+        default_path = "hippocampus_predictions.csv"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Predictions to CSV", default_path, "CSV Files (*.csv);;All Files (*)"
+        )
+        if filepath:
+            try:
+                results = rp.all_evaluation_results
+                fieldnames = list(results[0].keys())
+                with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(results)
+                self.log(f"Exported {len(results)} patient predictions to: {filepath}")
+                QMessageBox.information(
+                    self, "Export Successful",
+                    f"Saved {len(results)} patient predictions to:\n{filepath}"
+                )
+            except Exception as e:
+                QMessageBox.warning(self, "Export Failed", f"Could not write CSV file:\n{e}")
 
-        toolbar.addWidget(QLabel("  Modules: "))
-        self.module_combo = QComboBox()
-        self.module_combo.addItems([
-            "Main Panel",
-            "Data Importer",
-            "FastSurfer Segmentation",
-            "ICP Registration",
-            "SPHARM Processing",
-            "Result Panel"
-        ])
-        self.module_combo.setMinimumWidth(200)
-        toolbar.addWidget(self.module_combo)
+    def clear_3d_view(self):
+        if hasattr(self.right_panel, 'viewer'):
+            self.right_panel.viewer.display_mesh("")
+        if hasattr(self.right_panel, 'clear_gradcam_view'):
+            self.right_panel.clear_gradcam_view()
+        self.log("Cleared 3D mesh view and overlays.")
+
+    def reset_3d_camera(self):
+        if hasattr(self.right_panel, 'viewer'):
+            self.right_panel.viewer.reset_camera()
+
+    def set_single_3d_view(self):
+        if hasattr(self.right_panel, 'set_view_mode'):
+            self.right_panel.set_view_mode("full_3d", self.module_combo.currentText())
+            self.log("Switched to Single Full 3D Viewport.")
+
+    def set_quad_view(self):
+        if hasattr(self.right_panel, 'set_view_mode'):
+            self.right_panel.set_view_mode("quad", self.module_combo.currentText())
+            self.log("Switched to Quad 4-Viewports.")
+
+    def toggle_view_mode(self):
+        cur = getattr(self.right_panel.viewer, 'view_mode', 'quad')
+        if cur == 'full_3d':
+            self.set_quad_view()
+        else:
+            self.set_single_3d_view()
+
+    def toggle_left_sidebar(self):
+        is_vis = self.left_scroll.isVisible()
+        self.left_scroll.setVisible(not is_vis)
+        if hasattr(self, 'toggle_left_action'):
+            self.toggle_left_action.setChecked(not is_vis)
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showMaximized()
+            if hasattr(self, 'fullscreen_action'):
+                self.fullscreen_action.setChecked(False)
+        else:
+            self.showFullScreen()
+            if hasattr(self, 'fullscreen_action'):
+                self.fullscreen_action.setChecked(True)
+
+    def run_full_pipeline(self):
+        self.module_combo.setCurrentText("Main Panel")
+        mp = getattr(self.left_panel, 'main_panel', None)
+        if mp and hasattr(mp, 'run_all_button'):
+            mp.run_all_button.click()
+            self.log("Triggered automated Full Pipeline execution.")
+
+    def show_preferences(self):
+        slicer_paths = glob.glob(r"C:\Program Files\SlicerSALT*\SlicerSALT.exe")
+        current_slicer = slicer_paths[0] if slicer_paths else ""
+        dlg = PreferencesDialog(self, current_slicer=current_slicer)
+        if dlg.exec():
+            theme_idx = dlg.theme_combo.currentIndex()
+            viewer = getattr(self.right_panel, 'viewer', None)
+            if viewer and hasattr(viewer, 'mesh_renderer'):
+                ren = viewer.mesh_renderer
+                if theme_idx == 0:  # Slicer Blue Gradient
+                    ren.GradientBackgroundOn()
+                    ren.SetBackground(0.741, 0.749, 0.902)
+                    ren.SetBackground2(0.459, 0.475, 0.745)
+                elif theme_idx == 1:  # Clinical Dark Slate
+                    ren.GradientBackgroundOn()
+                    ren.SetBackground(0.12, 0.15, 0.20)
+                    ren.SetBackground2(0.06, 0.08, 0.12)
+                elif theme_idx == 2:  # Pure Black
+                    ren.GradientBackgroundOff()
+                    ren.SetBackground(0.0, 0.0, 0.0)
+                elif theme_idx == 3:  # Pure White
+                    ren.GradientBackgroundOff()
+                    ren.SetBackground(1.0, 1.0, 1.0)
+                if hasattr(viewer, 'mesh_vtkWidget'):
+                    viewer.mesh_vtkWidget.GetRenderWindow().Render()
+                self.log(f"3D Viewport Theme changed to: {dlg.theme_combo.currentText()}")
+
+    def show_diagnostics(self):
+        dlg = DiagnosticsDialog(self)
+        dlg.exec()
+
+    def show_about(self):
+        dlg = AboutDialog(self)
+        dlg.exec()
 
     def check_slicer_salt(self):
-        import glob
         slicer_paths = glob.glob(r"C:\Program Files\SlicerSALT*\SlicerSALT.exe")
-        
         if not slicer_paths:
-            QMessageBox.critical(self, "SlicerSALT Required", 
-                                "SlicerSALT could not be found in the default installation directory (C:\\Program Files\\SlicerSALT*).\n\n"
-                                "This program requires SlicerSALT to function. The application will now close and open the download page.")
+            QMessageBox.critical(
+                self, "SlicerSALT Required", 
+                "SlicerSALT could not be found in the default installation directory (C:\\Program Files\\SlicerSALT*).\n\n"
+                "This program requires SlicerSALT to function. The application will now close and open the download page."
+            )
             webbrowser.open("https://salt.slicer.org/")
             sys.exit(1)
         else:
             self.log(f"SUCCESS: SlicerSALT detected at {slicer_paths[0]}")
 
+    # ====================================================
+    # Console & Logging Helpers
+    # ====================================================
+    def log(self, message):
+        self.console.log(message)
+
     def copy_console_logs(self):
-        clipboard = QApplication.clipboard()
-        if clipboard:
-            clipboard.setText(self.log_window.toPlainText())
-            self.console_status_lbl.setText("Logs copied to clipboard!")
-            self.console_status_lbl.setStyleSheet("color: #2ecc71; font-size: 11px;")
+        self.console.copy_logs()
 
     def clear_console_logs(self):
-        self.log_window.clear()
-        self.console_status_lbl.setText("Console cleared")
-        self.console_status_lbl.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        self.console.clear_logs()
 
     def toggle_console_expand(self):
         sizes = self.v_splitter.sizes()
         total_height = sum(sizes) if sum(sizes) > 0 else 800
         
-        # If not full screen (top area > 50px) -> make terminal full screen covering left and right
         if sizes[0] > 50:
             self.saved_splitter_sizes = sizes
             self.v_splitter.setSizes([0, total_height])
             self.is_terminal_fullscreen = True
-            self.expand_btn.setText("Restore")
-            self.expand_btn.setToolTip("Restore terminal to original size")
-            self.console_status_lbl.setText("Terminal Fullscreen (Covering workspace)")
+            self.console.expand_btn.setText("Restore")
+            self.console.expand_btn.setToolTip("Restore terminal to original size")
+            self.console.set_status("Terminal Fullscreen (Covering workspace)")
         else:
-            # Restore to previous sizes
             if hasattr(self, 'saved_splitter_sizes') and self.saved_splitter_sizes[0] > 50:
                 self.v_splitter.setSizes(self.saved_splitter_sizes)
             else:
                 self.v_splitter.setSizes([total_height - 135, 135])
             self.is_terminal_fullscreen = False
-            self.expand_btn.setText("Expand")
-            self.expand_btn.setToolTip("Expand terminal to full screen")
-            self.console_status_lbl.setText("Ready")
+            self.console.expand_btn.setText("Expand")
+            self.console.expand_btn.setToolTip("Expand terminal to full screen")
+            self.console.set_status("Ready")
 
     def on_splitter_moved(self, pos, index):
         sizes = self.v_splitter.sizes()
         if sizes[0] > 50 and getattr(self, 'is_terminal_fullscreen', False):
             self.is_terminal_fullscreen = False
-            self.expand_btn.setText("Expand")
-            self.expand_btn.setToolTip("Expand terminal to full screen")
+            self.console.expand_btn.setText("Expand")
+            self.console.expand_btn.setToolTip("Expand terminal to full screen")
 
     def on_h_splitter_moved(self, pos, index):
         if self.right_scroll.isVisible():
@@ -361,7 +351,7 @@ class MainWindow(QMainWindow):
                 self.saved_splitter_sizes = [top_h, total_h - top_h]
 
     def set_terminal_visible(self, visible):
-        self.console_widget.setVisible(visible)
+        self.console.setVisible(visible)
         if hasattr(self, 'toggle_terminal_action'):
             self.toggle_terminal_action.setChecked(visible)
         if visible:
@@ -369,43 +359,11 @@ class MainWindow(QMainWindow):
             total_height = sum(sizes) if sum(sizes) > 0 else 800
             if len(sizes) >= 2 and sizes[1] < 50:
                 self.v_splitter.setSizes([total_height - 135, 135])
-            self.console_status_lbl.setText("Ready")
+            self.console.set_status("Ready")
 
-    def log(self, message):
-        import html
-        from datetime import datetime
-        
-        now_str = datetime.now().strftime("%H:%M:%S")
-        escaped_msg = html.escape(str(message))
-        
-        # Color coding tags for easier monitoring
-        if "[ERROR]" in escaped_msg:
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #ff7b72; font-weight: bold;">{escaped_msg}</span>'
-            self.console_status_lbl.setText("Last status: Error")
-            self.console_status_lbl.setStyleSheet("color: #ff7b72; font-weight: bold; font-size: 11px;")
-        elif "[WARNING]" in escaped_msg:
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #d29922; font-weight: bold;">{escaped_msg}</span>'
-            self.console_status_lbl.setText("Last status: Warning")
-            self.console_status_lbl.setStyleSheet("color: #d29922; font-size: 11px;")
-        elif ">>>" in escaped_msg or "Starting" in escaped_msg or "Running" in escaped_msg:
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #58a6ff; font-weight: bold;">{escaped_msg}</span>'
-            self.console_status_lbl.setText("Running...")
-            self.console_status_lbl.setStyleSheet("color: #58a6ff; font-size: 11px;")
-        elif "SUCCESS" in escaped_msg or "completed successfully" in escaped_msg.lower():
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #3fb950; font-weight: bold;">{escaped_msg}</span>'
-            self.console_status_lbl.setText("Ready (Success)")
-            self.console_status_lbl.setStyleSheet("color: #3fb950; font-weight: bold; font-size: 11px;")
-        elif "[INFO]" in escaped_msg:
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #79c0ff;">{escaped_msg}</span>'
-        else:
-            formatted = f'<span style="color: #8b949e;">[{now_str}]</span> <span style="color: #c9d1d9;">{escaped_msg}</span>'
-            
-        self.log_window.append(formatted)
-        
-        if hasattr(self, 'auto_scroll_cb') and self.auto_scroll_cb.isChecked():
-            sb = self.log_window.verticalScrollBar()
-            sb.setValue(sb.maximum())
-
+    # ====================================================
+    # Panel Signal & Module Routing
+    # ====================================================
     def on_overlay_all_toggled(self, enabled: bool, filepaths: list, side_filter: str):
         self.right_panel.set_overlay_visible(enabled)
         if enabled:
@@ -418,13 +376,8 @@ class MainWindow(QMainWindow):
     def on_module_changed(self, module_name):
         index = self.module_combo.findText(module_name)
         self.left_panel.switch_module(index)
-        
-        # Clear previous module's patient meshes from 3D view so they do not mix
         self.right_panel.viewer.clear_all_patient_meshes()
 
-        # Modules configuration: define which modules have Right UI enabled
-        # Currently Main Panel and Result Panel do not have Right UI,
-        # but the Right UI system is fully preserved so either can be enabled here in the future.
         modules_with_right_ui = {
             "Main Panel": True,
             "Data Importer": True,
@@ -435,16 +388,13 @@ class MainWindow(QMainWindow):
         }
 
         has_right_ui = modules_with_right_ui.get(module_name, False)
-
         if not has_right_ui:
-            # Hide right UI for panels without right UI
             if self.right_scroll.isVisible():
                 sizes = self.h_splitter.sizes()
                 if len(sizes) == 2 and sizes[0] > 50 and sizes[1] > 50:
                     self.saved_h_splitter_sizes = sizes
             self.right_scroll.setVisible(False)
         else:
-            # Show right UI and restore previous horizontal split size
             if not self.right_scroll.isVisible():
                 self.right_scroll.setVisible(True)
                 if hasattr(self, 'saved_h_splitter_sizes') and self.saved_h_splitter_sizes:
@@ -461,12 +411,10 @@ class MainWindow(QMainWindow):
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(False)
 
-        # If switching away from Result Panel, always clear Grad-CAM scalar actors and colorbar
         if module_name != "Result Panel":
             if hasattr(self.right_panel, 'clear_gradcam_view'):
                 self.right_panel.clear_gradcam_view(render_now=False)
 
-        # Sync state with newly active module panel
         active_panel = self.left_panel.get_current_module_panel()
         if module_name == "Data Importer" and hasattr(active_panel, 'display_selected_subject'):
             active_panel.display_selected_subject()

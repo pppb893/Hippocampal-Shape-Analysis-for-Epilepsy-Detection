@@ -2,12 +2,12 @@ import os
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QStackedWidget
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from .main_panel import MainPanel
-from .import_panel import ImportPanel
-from .fastsurfer_panel import FastsurferPanel
-from .icp_panel import IcpPanel
-from .spharm_panel import SpharmPanel
-from .result_panel import ResultPanel
+from LeftUI.main_panel import MainPanel
+from LeftUI.import_panel import ImportPanel
+from LeftUI.fastsurfer_panel import FastsurferPanel
+from LeftUI.icp_panel import IcpPanel
+from LeftUI.spharm_panel import SpharmPanel
+from LeftUI.result_panel import ResultPanel
 
 class AdaptiveStackedWidget(QStackedWidget):
     def sizeHint(self):
