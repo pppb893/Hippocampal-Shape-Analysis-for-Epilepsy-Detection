@@ -185,11 +185,6 @@ def setup_menus_and_toolbar(window):
     salt_web_act.triggered.connect(lambda: webbrowser.open("https://salt.slicer.org/"))
     help_menu.addAction(salt_web_act)
 
-    fastsurfer_web_act = QAction("🧠 FastSurfer Documentation", window)
-    fastsurfer_web_act.setStatusTip("Open FastSurfer deep-learning segmentation documentation")
-    fastsurfer_web_act.triggered.connect(lambda: webbrowser.open("https://fastsurfer.neuro.uni-bonn.de/"))
-    help_menu.addAction(fastsurfer_web_act)
-
     help_menu.addSeparator()
 
     about_act = QAction("ℹ️ About Hippocampal Shape Analysis Toolbox", window)
