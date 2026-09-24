@@ -47,6 +47,7 @@ class RightPanel(QWidget):
         self.viewer.display_all_meshes(filepaths, side_filter=side_filter)
 
     def display_subject(self, filepath):
+        self.viewer.set_mesh_view_visible(False)
         self.set_view_mode("quad", "Data Importer")
         self.signal_log_message.emit(f"Displaying subject: {os.path.basename(filepath)}")
         

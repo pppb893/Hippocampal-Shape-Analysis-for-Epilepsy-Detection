@@ -559,6 +559,8 @@ class VtkViewer(QWidget):
             
         else: # quad mode
             self.maximized_frame = None
+            if module_name == "Data Importer":
+                self.mesh_view_enabled = False
             
             self.grid_layout.removeWidget(self.mesh_frame)
             self.grid_layout.addWidget(self.mesh_frame, 0, 1, 1, 1)

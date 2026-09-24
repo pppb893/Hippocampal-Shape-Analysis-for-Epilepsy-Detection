@@ -466,15 +466,11 @@ class MainWindow(QMainWindow):
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(True)
             elif module_name == "Data Importer":
-                has_subj = hasattr(active_panel, 'subjects_table') and active_panel.subjects_table.rowCount() > 0 and bool(active_panel.subjects_table.selectedItems())
-                if has_subj:
-                    self.right_panel.set_view_mode("quad", module_name)
-                    self.right_panel.viewer.set_mesh_view_visible(False)
-                else:
-                    self.right_panel.set_view_mode("full_3d", module_name)
-            else:
-                self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(False)
+                self.right_panel.set_view_mode("quad", module_name)
+            else:
+                self.right_panel.viewer.set_mesh_view_visible(False)
+                self.right_panel.set_view_mode("quad", module_name)
 
         if module_name != "Result Panel":
             if hasattr(self.right_panel, 'clear_gradcam_view'):
