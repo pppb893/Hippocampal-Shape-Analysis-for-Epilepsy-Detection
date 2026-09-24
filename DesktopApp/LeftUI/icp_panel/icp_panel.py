@@ -203,9 +203,6 @@ class IcpPanel(QWidget):
         icp_layout.addWidget(self.run_icp_btn)
 
         self.icp_status_hint = QLabel("")
-        self.icp_status_hint.setWordWrap(True)
-        self.icp_status_hint.setStyleSheet("font-size: 11px; padding: 5px 8px; border-radius: 4px;")
-        icp_layout.addWidget(self.icp_status_hint)
 
         # 4. Modular Collapsible Advanced Parameters
         icp_layout.addWidget(self.adv_widget)
@@ -515,26 +512,9 @@ class IcpPanel(QWidget):
         if not has_lh and not has_rh:
             self.run_icp_btn.setEnabled(False)
             self.run_icp_btn.setToolTip("")
-            self.icp_status_hint.setText("")
-            self.icp_status_hint.hide()
         else:
             self.run_icp_btn.setEnabled(True)
             self.run_icp_btn.setToolTip("Click to run Groupwise ICP Registration")
-            lh_count = len(glob.glob(os.path.join(lh_dir, "*.nii*"))) if has_lh else 0
-            rh_count = len(glob.glob(os.path.join(rh_dir, "*.nii*"))) if has_rh else 0
-            src_type = "Custom Folder" if self.mesh_input_dir.text().strip() else "Pipeline"
-            msg = f"Ready ({src_type}): Detected {lh_count} Left & {rh_count} Right meshes. Results will be saved to: {target_out}"
-            self.icp_status_hint.setText(msg)
-            self.icp_status_hint.setStyleSheet("""
-                color: #1e8449; 
-                background-color: #eafaf1; 
-                border: 1px solid #a9dfbf; 
-                font-size: 11px; 
-                padding: 6px 8px; 
-                border-radius: 4px;
-                font-weight: 500;
-            """)
-            self.icp_status_hint.show()
 
         self.populate_results_table()
 

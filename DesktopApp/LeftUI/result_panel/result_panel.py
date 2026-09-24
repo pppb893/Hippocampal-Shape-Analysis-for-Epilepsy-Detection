@@ -293,9 +293,6 @@ class ResultPanel(QWidget):
         e_layout.addWidget(self.batch_prog_bar)
 
         self.batch_status_hint = QLabel("")
-        self.batch_status_hint.setWordWrap(True)
-        self.batch_status_hint.setStyleSheet("font-size: 11px; padding: 2px 4px; border-radius: 3px;")
-        e_layout.addWidget(self.batch_status_hint)
         container_layout.addWidget(exec_group)
 
         # ---------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import re
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QLabel, QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, 
                              QLineEdit, QCheckBox, QGroupBox, QMenu, QMessageBox)
@@ -40,11 +41,13 @@ class ToggleTableWidget(QTableWidget):
 class ImportPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_subject_selected = pyqtSignal(str)
+    signal_mesh_selected = pyqtSignal(object, str)
     signal_directories_changed = pyqtSignal(str, str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.load_history()
+        self.last_input_dir = None
+        self.last_output_dir = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -96,7 +99,6 @@ class ImportPanel(QWidget):
         """)
         dir_select_btn.clicked.connect(self.select_directory)
         ig_layout.addWidget(dir_select_btn)
-        self.history_btn = None
 
         # Row 2: Choose Output Directory
         out_dir_btn = QPushButton("Choose Output Directory")
@@ -262,112 +264,8 @@ class ImportPanel(QWidget):
         
         import_layout.addWidget(subj_group)
 
-    def load_history(self):
-        self.history_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "app_history.json")
-        self.recent_dirs = []
-        self.last_input_dir = None
-        self.last_output_dir = None
-        
-        if os.path.exists(self.history_file):
-            try:
-                with open(self.history_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    self.recent_dirs = data.get("recent_input_dirs", [])
-                    self.last_input_dir = data.get("last_input_dir")
-                    self.last_output_dir = data.get("last_output_dir")
-            except Exception:
-                self.recent_dirs = []
-        
-        # History is kept empty unless user explicitly adds directories
-
-    def save_history(self):
-        try:
-            data = {
-                "recent_input_dirs": self.recent_dirs,
-                "last_input_dir": getattr(self, 'last_input_dir', None),
-                "last_output_dir": getattr(self, 'last_output_dir', None)
-            }
-            with open(self.history_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception:
-            pass
-
     def add_to_history(self, path):
-        if not path or not os.path.isdir(path):
-            return
-        norm_p = os.path.normpath(os.path.abspath(path))
-        self.recent_dirs = [p for p in self.recent_dirs if os.path.normpath(os.path.abspath(p)) != norm_p]
-        self.recent_dirs.insert(0, path)
-        self.recent_dirs = self.recent_dirs[:10]
-        self.last_input_dir = path
-        self.save_history()
-
-    def show_history_menu(self):
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #ffffff;
-                border: 1px solid #ced6e0;
-                border-radius: 6px;
-                padding: 4px;
-                font-size: 11px;
-            }
-            QMenu::item {
-                padding: 6px 14px;
-                border-radius: 4px;
-                color: #2c3e50;
-            }
-            QMenu::item:selected {
-                background-color: #f1f2f6;
-                color: #2980b9;
-                font-weight: bold;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #e4e7eb;
-                margin: 4px 8px;
-            }
-        """)
-
-        if not self.recent_dirs:
-            empty_act = menu.addAction("No recent directories found")
-            empty_act.setEnabled(False)
-        else:
-            title_act = menu.addAction("Recent Data Directories:")
-            title_act.setEnabled(False)
-            font = title_act.font()
-            font.setBold(True)
-            title_act.setFont(font)
-            menu.addSeparator()
-
-            for path in self.recent_dirs:
-                act = menu.addAction(path)
-                act.triggered.connect(lambda checked, p=path: self.select_history_path(p))
-
-            menu.addSeparator()
-            clear_act = menu.addAction("Clear History")
-            clear_act.triggered.connect(self.clear_history)
-
-        menu.exec(self.history_btn.mapToGlobal(QPoint(0, self.history_btn.height())))
-
-    def select_history_path(self, path):
-        if os.path.isdir(path):
-            self.folder_input.setText(path)
-            self.add_to_history(path)
-            self.signal_log_message.emit(f"Selected from history: {path}")
-            self.load_subjects_from_directory(path)
-            self.signal_log_message.emit(">>> Data loaded from history successfully.")
-            self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
-        else:
-            self.signal_log_message.emit(f"[WARNING] Directory no longer exists: {path}")
-            if path in self.recent_dirs:
-                self.recent_dirs.remove(path)
-                self.save_history()
-
-    def clear_history(self):
-        self.recent_dirs = []
-        self.save_history()
-        self.signal_log_message.emit("File history cleared.")
+        pass
 
     def get_folder(self):
         return self.folder_input.text()
@@ -380,7 +278,7 @@ class ImportPanel(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select Directory with NIFTI files", initial_dir)
         if folder:
             self.folder_input.setText(folder)
-            self.add_to_history(folder)
+            self.last_input_dir = folder
             self.signal_log_message.emit(f"Selected input directory: {folder}")
             self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
 
@@ -390,14 +288,150 @@ class ImportPanel(QWidget):
         if folder:
             self.out_folder_input.setText(folder)
             self.last_output_dir = folder
-            self.save_history()
+            self.load_subjects_from_output(folder)
             self.signal_log_message.emit(f"Selected output directory: {folder}")
             self.signal_directories_changed.emit(self.get_folder(), self.get_output_folder())
+
+    def load_subjects_from_output(self, out_dir):
+        if not out_dir or not os.path.isdir(out_dir):
+            return
+
+        # If user explicitly loaded raw files in folder_input, don't overwrite unless table empty
+        if self.subjects_table.rowCount() > 0 and self.folder_input.text().strip():
+            return
+
+        fs_mri_dir = os.path.join(out_dir, "fastsurfer", "mri")
+        os.makedirs(fs_mri_dir, exist_ok=True)
+
+        # 1. Discover all subject IDs from output folders
+        subjects = set()
+        
+        # From fastsurfer_temp subdirectories
+        fs_temp = os.path.join(out_dir, "fastsurfer", "fastsurfer_temp")
+        if os.path.isdir(fs_temp):
+            for d in os.listdir(fs_temp):
+                if os.path.isdir(os.path.join(fs_temp, d)):
+                    subjects.add(d)
+
+        # From fastsurfer left/right hippocampus
+        for side_dir in ["left_hippocampus", "right_hippocampus"]:
+            p = os.path.join(out_dir, "fastsurfer", side_dir)
+            if os.path.isdir(p):
+                for f in os.listdir(p):
+                    m = re.search(r'(sub-[a-zA-Z0-9]+)', f)
+                    if m:
+                        subjects.add(m.group(1))
+
+        # From fastsurfer/mri
+        if os.path.isdir(fs_mri_dir):
+            for f in os.listdir(fs_mri_dir):
+                m = re.search(r'(sub-[a-zA-Z0-9]+)', f)
+                if m:
+                    subjects.add(m.group(1))
+
+        # From ICP, SPHARM, or Result directories
+        for vtk_file in glob.glob(os.path.join(out_dir, "**", "*.vtk"), recursive=True):
+            m = re.search(r'(sub-[a-zA-Z0-9]+)', os.path.basename(vtk_file))
+            if m:
+                subjects.add(m.group(1))
+
+        # 2. For each subject, find or convert the paired MRI volume
+        paired_items = []
+        seen_files = set()
+
+        for subj in sorted(subjects):
+            mri_filepath = None
+            
+            # Check fastsurfer/mri/{subj}_t1.nii.gz or variations
+            mri_candidates = [
+                os.path.join(fs_mri_dir, f"{subj}_t1.nii.gz"),
+                os.path.join(fs_mri_dir, f"{subj}.nii.gz"),
+                os.path.join(fs_mri_dir, f"{subj}_T1w.nii.gz"),
+                os.path.join(out_dir, "mri", f"{subj}_t1.nii.gz"),
+            ]
+            for cand in mri_candidates:
+                if os.path.isfile(cand):
+                    mri_filepath = cand
+                    break
+
+            # If not yet converted, search for orig.mgz in fastsurfer_temp
+            if not mri_filepath:
+                mgz_candidates = [
+                    os.path.join(fs_temp, subj, "mri", "orig.mgz"),
+                    os.path.join(out_dir, "fastsurfer", subj, "mri", "orig.mgz"),
+                    os.path.join(out_dir, "fastsurfer_temp", subj, "mri", "orig.mgz"),
+                ]
+                for mgz in mgz_candidates:
+                    if os.path.isfile(mgz):
+                        # Convert orig.mgz to NIfTI on the fly for VTK visualization
+                        dst_nii = os.path.join(fs_mri_dir, f"{subj}_t1.nii.gz")
+                        if not os.path.exists(dst_nii):
+                            try:
+                                import nibabel as nib
+                                import numpy as np
+                                img = nib.load(mgz)
+                                nii_img = nib.Nifti1Image(np.asarray(img.dataobj), img.affine, img.header)
+                                nib.save(nii_img, dst_nii)
+                            except Exception as e:
+                                print(f"[ERROR] Could not convert {mgz}: {e}")
+                        if os.path.exists(dst_nii):
+                            mri_filepath = dst_nii
+                            break
+
+            # If MRI found, add to paired items
+            if mri_filepath and os.path.isfile(mri_filepath):
+                fname = os.path.basename(mri_filepath)
+                if fname not in seen_files:
+                    seen_files.add(fname)
+                    paired_items.append((fname, mri_filepath))
+            else:
+                # Fallback to hippocampus mask or aligned mesh if MRI is missing
+                fallback_candidates = [
+                    os.path.join(out_dir, "fastsurfer", "left_hippocampus", f"lh_{subj}_hippocampus.nii.gz"),
+                    os.path.join(out_dir, "output_ICP", "left", "aligned_meshes", f"lh_{subj}_hippocampus_aligned.vtk"),
+                ]
+                for fb in fallback_candidates:
+                    if os.path.isfile(fb):
+                        fname = os.path.basename(fb)
+                        if fname not in seen_files:
+                            seen_files.add(fname)
+                            paired_items.append((fname, fb))
+                        break
+
+        # Also add any other MRI volumes found in fastsurfer/mri that weren't matched above
+        if os.path.isdir(fs_mri_dir):
+            for pat in ["*.nii.gz", "*.nii", "*.mgz"]:
+                for extra in glob.glob(os.path.join(fs_mri_dir, pat)):
+                    fname = os.path.basename(extra)
+                    if fname not in seen_files:
+                        seen_files.add(fname)
+                        paired_items.append((fname, extra))
+
+        if paired_items:
+            self.subjects_table.setRowCount(0)
+            for fname, fpath in paired_items:
+                row = self.subjects_table.rowCount()
+                self.subjects_table.setRowCount(row + 1)
+                item = QTableWidgetItem(fname)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item.setData(Qt.ItemDataRole.UserRole, fpath)
+                self.subjects_table.setItem(row, 0, item)
+
+            self.signal_log_message.emit(f"Import Panel loaded {len(paired_items)} paired subject MRI volume(s) from output directory.")
+            if self.subjects_table.rowCount() > 0:
+                self.subjects_table.blockSignals(True)
+                if not self.subjects_table.selectedItems():
+                    self.subjects_table.selectRow(0)
+                self.subjects_table.blockSignals(False)
+                if self.isVisible():
+                    self.display_selected_subject()
+
+    # Alias for backward compatibility
+    select_output_directory = select_out_directory
 
     def on_import_clicked(self):
         directory = self.folder_input.text()
         if directory and os.path.isdir(directory):
-            self.add_to_history(directory)
             self.load_subjects_from_directory(directory)
             self.signal_log_message.emit(">>> Data Imported Successfully.")
         else:
@@ -467,11 +501,16 @@ class ImportPanel(QWidget):
 
         # Auto-select and display first subject
         if self.subjects_table.rowCount() > 0:
+            self.subjects_table.blockSignals(True)
             if not self.subjects_table.selectedItems():
                 self.subjects_table.selectRow(0)
-            self.display_selected_subject()
+            self.subjects_table.blockSignals(False)
+            if self.isVisible():
+                self.display_selected_subject()
 
     def on_subject_selection_changed(self):
+        if not self.isVisible():
+            return
         if self.display_on_click_cb.isChecked():
             self.display_selected_subject()
 
@@ -490,7 +529,10 @@ class ImportPanel(QWidget):
         filepath = item.data(Qt.ItemDataRole.UserRole)
         
         self.signal_log_message.emit(f"Displaying subject: {subject_name}")
-        self.signal_subject_selected.emit(filepath)
+        if filepath and (filepath.lower().endswith(".vtk") or filepath.lower().endswith(".stl") or filepath.lower().endswith(".ply")):
+            self.signal_mesh_selected.emit(filepath, "all")
+        else:
+            self.signal_subject_selected.emit(filepath)
 
     def remove_selected_subject(self):
         selected_items = self.subjects_table.selectedItems()

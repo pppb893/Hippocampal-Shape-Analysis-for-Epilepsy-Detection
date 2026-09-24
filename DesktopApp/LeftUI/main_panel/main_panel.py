@@ -97,7 +97,6 @@ class MainPanel(QWidget):
         """)
         dir_select_btn.clicked.connect(self.select_directory)
         cg_layout.addWidget(dir_select_btn)
-        self.history_btn = None
 
         # Row 2: Choose Output Directory
         out_dir_btn = QPushButton("Choose Output Directory")
@@ -211,6 +210,7 @@ class MainPanel(QWidget):
         tg_layout.addWidget(self.tab_bar)
 
         self.table = QTableWidget(0, 4)
+        self.table.setMinimumHeight(240)
         self.table.setHorizontalHeaderLabels([
             "Subject", "Side", "Diagnosis", "Probability"
         ])
@@ -245,7 +245,7 @@ class MainPanel(QWidget):
         """)
         self.table.itemSelectionChanged.connect(self.on_table_row_selected)
         tg_layout.addWidget(self.table)
-        main_layout.addWidget(table_group)
+        main_layout.addWidget(table_group, stretch=1)
 
         # 3. Pipeline Stages & Execution Controls
         workflow_group = QGroupBox("Pipeline Workflow Execution")
@@ -291,19 +291,8 @@ class MainPanel(QWidget):
 
         wg_layout.addLayout(stages_layout)
 
-        # Status notification label
-        self.status_lbl = QLabel("Ready to run full pipeline.")
-        self.status_lbl.setWordWrap(True)
-        self.status_lbl.setStyleSheet("""
-            color: #2c3e50;
-            background-color: #eaf2f8;
-            border: 1px solid #d4e6f1;
-            font-size: 11px;
-            padding: 6px 8px;
-            border-radius: 4px;
-            font-weight: 500;
-        """)
-        wg_layout.addWidget(self.status_lbl)
+        # Status notification label (hidden from UI)
+        self.status_lbl = QLabel("")
 
         # Run Button (matches FastSurfer, ICP, SPHARM, Result panels)
         self.run_btn = QPushButton("Run Full Pipeline (FastSurfer -> ICP -> SPHARM -> Result)")
@@ -614,10 +603,12 @@ class MainPanel(QWidget):
 
         if self.table.rowCount() > 0:
             self.table.selectRow(0)
-            self.on_table_row_selected()
+            if self.isVisible():
+                self.on_table_row_selected()
         else:
-            self.signal_mesh_selected.emit("", "all")
-            self.signal_diagnostic_info.emit("")
+            if self.isVisible():
+                self.signal_mesh_selected.emit("", "all")
+                self.signal_diagnostic_info.emit("")
 
     def on_table_row_selected(self):
         selected = self.table.selectedItems()
@@ -643,6 +634,10 @@ class MainPanel(QWidget):
         diag_badge = f'<span style="color: {diag_color}; font-weight: bold;">&#9679; {diag} ({prob_str})</span>'
         g_name = os.path.basename(gradcam) if gradcam and gradcam != "—" else "None"
         info_html = f'{diag_badge}  |  <span style="color: #bdc3c7;">Grad-CAM: {g_name}</span>'
+
+        win = self.window()
+        if win and hasattr(win, 'right_panel'):
+            win.right_panel.set_view_mode("full_3d", "Main Panel")
 
         self.signal_diagnostic_info.emit(info_html)
 
@@ -680,18 +675,22 @@ class MainPanel(QWidget):
 
     def select_out_directory(self):
         parent_win = self.window() if self.window() else self
-        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        initial_dir = getattr(self, 'last_output_dir', None) if getattr(self, 'last_output_dir', None) and os.path.isdir(self.last_output_dir) else ("D:/" if os.path.exists("D:/") else "C:/")
         folder = QFileDialog.getExistingDirectory(parent_win, "Select Output Directory", initial_dir)
         if folder:
             self.out_folder_input.setText(folder)
-            self.sync_panel_output_folders(folder)
-            self.update_stage_preview()
-            self.populate_main_table(self.folder_input.text().strip(), folder)
+            self.last_output_dir = folder
+            win = self.window()
+            if win and hasattr(win, 'left_panel') and hasattr(win.left_panel, 'set_global_output_directory'):
+                win.left_panel.set_global_output_directory(folder)
+            else:
+                self.sync_panel_output_folders(folder)
+                self.update_stage_preview()
+                self.populate_main_table(self.folder_input.text().strip(), folder)
+                if self.import_panel:
+                    self.import_panel.out_folder_input.setText(folder)
+                    self.import_panel.load_subjects_from_output(folder)
             self.signal_log_message.emit(f"Main Panel selected output directory: {folder}")
-
-            if self.import_panel:
-                self.import_panel.out_folder_input.setText(folder)
-                self.import_panel.signal_directories_changed.emit(self.folder_input.text().strip(), folder)
 
 
     # Delegate pipeline execution to PipelineRunner

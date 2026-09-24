@@ -80,18 +80,16 @@ class LeftPanel(QWidget):
             panel.signal_log_message.connect(self.signal_log_message)
             
         self.import_panel.signal_subject_selected.connect(self.signal_subject_selected)
+        if hasattr(self.import_panel, 'signal_mesh_selected'):
+            self.import_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         
         def on_directories_changed(in_dir, out_dir):
-            self.main_panel.set_directories(in_dir, out_dir)
-            self.fastsurfer_panel.update_run_button_state()
-            self.icp_panel.update_run_button_state()
-            self.spharm_panel.update_run_button_state()
-            if hasattr(self.result_panel, 'on_spharm_dir_changed'):
-                sph_d = os.path.join(out_dir, "output_SPHARM")
-                res_d = os.path.join(out_dir, "output_Result")
-                self.result_panel.spharm_dir_input.setText(sph_d)
-                self.result_panel.result_dir_input.setText(res_d)
-                self.result_panel.on_spharm_dir_changed()
+            if out_dir:
+                self.set_global_output_directory(out_dir)
+            if in_dir:
+                if hasattr(self.main_panel, 'folder_input'):
+                    self.main_panel.folder_input.setText(in_dir)
+                    self.main_panel.update_stage_preview()
             
         self.import_panel.signal_directories_changed.connect(on_directories_changed)
 
@@ -152,6 +150,59 @@ class LeftPanel(QWidget):
         if hasattr(active_widget, 'set_overlay_visible'):
             active_widget.set_overlay_visible(visible)
 
+    def set_global_output_directory(self, out_dir):
+        if not out_dir or not os.path.isdir(out_dir):
+            return
+
+        # 1. Update Import Panel
+        if hasattr(self.import_panel, 'out_folder_input'):
+            self.import_panel.out_folder_input.setText(out_dir)
+            self.import_panel.last_output_dir = out_dir
+            if hasattr(self.import_panel, 'load_subjects_from_output'):
+                self.import_panel.load_subjects_from_output(out_dir)
+
+        # 2. Update Main Panel
+        if hasattr(self.main_panel, 'out_folder_input'):
+            self.main_panel.out_folder_input.setText(out_dir)
+            self.main_panel.last_output_dir = out_dir
+            self.main_panel.sync_panel_output_folders(out_dir)
+            self.main_panel.update_stage_preview()
+            self.main_panel.populate_main_table()
+
+        # 3. Update FastSurfer Panel
+        if hasattr(self.fastsurfer_panel, 'fs_dir_input'):
+            fs_dir = os.path.join(out_dir, "fastsurfer")
+            self.fastsurfer_panel.fs_dir_input.setText(fs_dir)
+            if os.path.isdir(fs_dir):
+                self.fastsurfer_panel.populate_results_table()
+        self.fastsurfer_panel.update_run_button_state()
+
+        # 4. Update ICP Panel
+        if hasattr(self.icp_panel, 'icp_dir_input'):
+            icp_dir = os.path.join(out_dir, "output_ICP")
+            self.icp_panel.icp_dir_input.setText(icp_dir)
+            if os.path.isdir(icp_dir):
+                self.icp_panel.populate_results_table()
+        self.icp_panel.update_run_button_state()
+
+        # 5. Update SPHARM Panel
+        if hasattr(self.spharm_panel, 'spharm_dir_input'):
+            spharm_dir = os.path.join(out_dir, "output_SPHARM")
+            self.spharm_panel.spharm_dir_input.setText(spharm_dir)
+            if os.path.isdir(spharm_dir):
+                self.spharm_panel.populate_results_table()
+        self.spharm_panel.update_run_button_state()
+
+        # 6. Update Result Panel
+        if hasattr(self.result_panel, 'spharm_dir_input'):
+            self.result_panel.spharm_dir_input.setText(os.path.join(out_dir, "output_SPHARM"))
+        if hasattr(self.result_panel, 'result_dir_input'):
+            self.result_panel.result_dir_input.setText(os.path.join(out_dir, "output_Result"))
+        if hasattr(self.result_panel, 'load_existing_results'):
+            self.result_panel.load_existing_results()
+        if hasattr(self.result_panel, 'on_spharm_dir_changed'):
+            self.result_panel.on_spharm_dir_changed()
+
     def get_current_module_panel(self):
         return self.stacked_widget.currentWidget()
 
@@ -166,6 +217,10 @@ class LeftPanel(QWidget):
             if in_dir and os.path.isdir(in_dir):
                 if getattr(self.import_panel, 'loaded_directory', None) != in_dir or self.import_panel.subjects_table.rowCount() == 0:
                     self.import_panel.load_subjects_from_directory(in_dir)
+            else:
+                out_dir = self.import_panel.get_output_folder().strip()
+                if out_dir and os.path.isdir(out_dir):
+                    self.import_panel.load_subjects_from_output(out_dir)
         elif current == self.fastsurfer_panel:
             out_dir = self.import_panel.get_output_folder().strip()
             if out_dir and os.path.isdir(out_dir):

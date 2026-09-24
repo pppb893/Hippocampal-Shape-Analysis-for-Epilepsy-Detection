@@ -256,9 +256,6 @@ class FastsurferPanel(QWidget):
         fs_layout.addWidget(self.run_fs_btn)
 
         self.fs_status_hint = QLabel("")
-        self.fs_status_hint.setWordWrap(True)
-        self.fs_status_hint.setStyleSheet("font-size: 11px; padding: 5px 8px; border-radius: 4px;")
-        fs_layout.addWidget(self.fs_status_hint)
         
         # 3. Segmentation Results Table with Category Tabs (All / Left / Right)
         res_group = QGroupBox("Segmentation Results & Meshes")
@@ -385,24 +382,9 @@ class FastsurferPanel(QWidget):
         if not has_out or not has_in:
             self.run_fs_btn.setEnabled(False)
             self.run_fs_btn.setToolTip("")
-            if hasattr(self, 'fs_status_hint'):
-                self.fs_status_hint.setText("")
-                self.fs_status_hint.hide()
         else:
             self.run_fs_btn.setEnabled(True)
             self.run_fs_btn.setToolTip("Click to run FastSurfer Pipeline")
-            if hasattr(self, 'fs_status_hint'):
-                self.fs_status_hint.setText(f"Ready: Results will be stored in: {out_dir}")
-                self.fs_status_hint.setStyleSheet("""
-                    color: #1e8449; 
-                    background-color: #eafaf1; 
-                    border: 1px solid #a9dfbf; 
-                    font-size: 11px; 
-                    padding: 5px 8px; 
-                    border-radius: 4px;
-                    font-weight: 500;
-                """)
-                self.fs_status_hint.show()
                 
             # If fs_dir_input is empty, pre-fill it with output_dir/fastsurfer
             if not self.fs_dir_input.text().strip():

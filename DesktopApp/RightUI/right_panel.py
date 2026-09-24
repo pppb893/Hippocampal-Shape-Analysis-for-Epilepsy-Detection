@@ -1,4 +1,5 @@
 import os
+import re
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtCore import pyqtSignal
 
@@ -46,8 +47,51 @@ class RightPanel(QWidget):
         self.viewer.display_all_meshes(filepaths, side_filter=side_filter)
 
     def display_subject(self, filepath):
+        self.set_view_mode("quad", "Data Importer")
         self.signal_log_message.emit(f"Displaying subject: {os.path.basename(filepath)}")
-        self.viewer.display_subject(filepath)
+        
+        # Search for LH and RH segmentation masks for this subject
+        parent_dir = os.path.dirname(os.path.abspath(filepath))
+        output_dir = os.path.dirname(parent_dir)
+        filename = os.path.basename(filepath)
+        
+        m = re.search(r'(sub-[a-zA-Z0-9]+)', filename)
+        subject_id = m.group(1) if m else None
+        
+        lh_mask = None
+        rh_mask = None
+        if subject_id:
+            search_bases = [output_dir, parent_dir, os.path.dirname(output_dir), os.path.join(output_dir, "fastsurfer")]
+            for base_d in search_bases:
+                if not os.path.isdir(base_d):
+                    continue
+                lh_candidates = [
+                    os.path.join(base_d, "left_hippocampus", f"lh_{subject_id}_hippocampus.nii.gz"),
+                    os.path.join(base_d, "left_hippocampus", f"{subject_id}_hippocampus_lh.nii.gz"),
+                    os.path.join(base_d, f"lh_{subject_id}_hippocampus.nii.gz"),
+                ]
+                rh_candidates = [
+                    os.path.join(base_d, "right_hippocampus", f"rh_{subject_id}_hippocampus.nii.gz"),
+                    os.path.join(base_d, "right_hippocampus", f"{subject_id}_hippocampus_rh.nii.gz"),
+                    os.path.join(base_d, f"rh_{subject_id}_hippocampus.nii.gz"),
+                ]
+                if not lh_mask:
+                    for c in lh_candidates:
+                        if os.path.isfile(c):
+                            lh_mask = c
+                            break
+                if not rh_mask:
+                    for c in rh_candidates:
+                        if os.path.isfile(c):
+                            rh_mask = c
+                            break
+                if lh_mask and rh_mask:
+                    break
+                    
+        if lh_mask or rh_mask:
+            self.viewer.display_segmentation_overlays(filepath, lh_mask, rh_mask, side_filter="all")
+        else:
+            self.viewer.display_subject(filepath)
 
     def display_mesh(self, filepath, side_filter="all"):
         if isinstance(filepath, list):
@@ -66,10 +110,19 @@ class RightPanel(QWidget):
             self.viewer.display_mesh("", side_filter=side_filter)
             self.signal_log_message.emit("[INFO] Deselected mesh from 3D view.")
             return
+
+        # Check current module or mesh type: if Main Panel, ICP, SPHARM, or Result Panel, enforce full_3d
+        current_mod = getattr(self.viewer, 'current_module_name', '')
+        is_3d_only_mesh = ("spharm" in filepath.lower()) or ("_aligned" in filepath.lower()) or ("gradcam" in filepath.lower())
+        if "main" in str(current_mod).lower() or current_mod in ("Main Panel", "ICP Registration", "SPHARM Processing", "Result Panel") or is_3d_only_mesh:
+            target_mod = current_mod if current_mod in ("Main Panel", "ICP Registration", "SPHARM Processing", "Result Panel") else "Main Panel"
+            if getattr(self.viewer, 'view_mode', '') != "full_3d":
+                self.set_view_mode("full_3d", target_mod)
+
         self.signal_log_message.emit(f"Displaying 3D Mesh: {os.path.basename(filepath)}")
         self.viewer.display_mesh(filepath, side_filter=side_filter)
         
-        # If in full_3d mode (ICP / SPHARM), skip 2D MRI slice search and overlay
+        # If in full_3d mode (Main Panel / ICP / SPHARM / Result), skip 2D MRI slice search and overlay
         if getattr(self.viewer, 'view_mode', 'quad') == "full_3d":
             self.signal_log_message.emit(f"[INFO] 3D mesh rendered for {os.path.basename(filepath)} in Full 3D View.")
             return

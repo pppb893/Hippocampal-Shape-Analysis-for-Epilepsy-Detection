@@ -203,9 +203,6 @@ class SpharmPanel(QWidget):
         spharm_layout.addWidget(self.run_spharm_btn)
 
         self.spharm_status_hint = QLabel("")
-        self.spharm_status_hint.setWordWrap(True)
-        self.spharm_status_hint.setStyleSheet("font-size: 11px; padding: 5px 8px; border-radius: 4px;")
-        spharm_layout.addWidget(self.spharm_status_hint)
 
         # 4. Modular Collapsible Advanced Parameters
         spharm_layout.addWidget(self.adv_widget)
@@ -507,33 +504,9 @@ class SpharmPanel(QWidget):
         if not has_lh and not has_rh:
             self.run_spharm_btn.setEnabled(False)
             self.run_spharm_btn.setToolTip("Cannot run SPHARM: No ICP-aligned meshes found.")
-            self.spharm_status_hint.setText("SPHARM requires ICP-aligned meshes. Please run Groupwise ICP Registration first.")
-            self.spharm_status_hint.setStyleSheet("""
-                color: #c0392b; 
-                background-color: #fdedec; 
-                border: 1px solid #f5b7b1; 
-                font-size: 11px; 
-                padding: 6px 8px; 
-                border-radius: 4px;
-            """)
-            self.spharm_status_hint.show()
         else:
             self.run_spharm_btn.setEnabled(True)
             self.run_spharm_btn.setToolTip("Click to run Batch SPHARM-PDM Pipeline")
-            lh_count = len(glob.glob(os.path.join(lh_dir, "*.nii*"))) if has_lh else 0
-            rh_count = len(glob.glob(os.path.join(rh_dir, "*.nii*"))) if has_rh else 0
-            msg = f"Ready ({src_label}): Detected {lh_count} Left & {rh_count} Right aligned meshes. Results will be saved to: {target_out}"
-            self.spharm_status_hint.setText(msg)
-            self.spharm_status_hint.setStyleSheet("""
-                color: #1e8449; 
-                background-color: #eafaf1; 
-                border: 1px solid #a9dfbf; 
-                font-size: 11px; 
-                padding: 6px 8px; 
-                border-radius: 4px;
-                font-weight: 500;
-            """)
-            self.spharm_status_hint.show()
 
         self.populate_results_table()
 

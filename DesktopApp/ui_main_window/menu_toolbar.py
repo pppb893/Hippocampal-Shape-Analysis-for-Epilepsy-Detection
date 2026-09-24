@@ -90,28 +90,6 @@ def setup_menus_and_toolbar(window):
     # ====================================================
     view_menu = menubar.addMenu("&View")
 
-    reset_cam_act = QAction("⌖ &Reset Camera / Center Model", window)
-    reset_cam_act.setShortcut(QKeySequence("Space"))
-    reset_cam_act.setStatusTip("Center camera and fit 3D model bounding box")
-    reset_cam_act.triggered.connect(window.reset_3d_camera)
-    view_menu.addAction(reset_cam_act)
-
-    view_menu.addSeparator()
-
-    single_3d_act = QAction("🔲 Single 3D Viewport", window)
-    single_3d_act.setShortcut(QKeySequence("Ctrl+1"))
-    single_3d_act.setStatusTip("Maximize 3D viewport for detailed shape inspection")
-    single_3d_act.triggered.connect(window.set_single_3d_view)
-    view_menu.addAction(single_3d_act)
-
-    quad_act = QAction("⊞ Quad View (4 Viewports)", window)
-    quad_act.setShortcut(QKeySequence("Ctrl+4"))
-    quad_act.setStatusTip("Show 3D Viewport + Axial, Sagittal, and Coronal slice views")
-    quad_act.triggered.connect(window.set_quad_view)
-    view_menu.addAction(quad_act)
-
-    view_menu.addSeparator()
-
     window.toggle_left_action = QAction("Toggle Left Sidebar", window, checkable=True)
     window.toggle_left_action.setChecked(True)
     window.toggle_left_action.setShortcut(QKeySequence("Ctrl+B"))
@@ -199,11 +177,6 @@ def setup_menus_and_toolbar(window):
     toolbar.setMovable(False)
     window.main_toolbar = toolbar
 
-    tb_open = QAction("📂 Open Folder", window)
-    tb_open.setToolTip("Open Dataset Directory (Ctrl+O)")
-    tb_open.triggered.connect(window.open_dataset_folder)
-    toolbar.addAction(tb_open)
-
     tb_mesh = QAction("🧊 Open Mesh", window)
     tb_mesh.setToolTip("Open single 3D mesh (.vtk, .ply, .stl) (Ctrl+M)")
     tb_mesh.triggered.connect(window.open_single_mesh)
@@ -241,17 +214,5 @@ def setup_menus_and_toolbar(window):
     tb_cam.setToolTip("Reset and Center 3D Camera (Space)")
     tb_cam.triggered.connect(window.reset_3d_camera)
     toolbar.addAction(tb_cam)
-
-    tb_layout = QAction("🔲 3D / 4-View", window)
-    tb_layout.setToolTip("Toggle between Full 3D View and Quad View (Ctrl+1 / Ctrl+4)")
-    tb_layout.triggered.connect(window.toggle_view_mode)
-    toolbar.addAction(tb_layout)
-
-    toolbar.addSeparator()
-
-    tb_run = QAction("▶ Run Pipeline", window)
-    tb_run.setToolTip("Execute Full Pipeline (Ctrl+R)")
-    tb_run.triggered.connect(window.run_full_pipeline)
-    toolbar.addAction(tb_run)
 
     return module_combo, toolbar

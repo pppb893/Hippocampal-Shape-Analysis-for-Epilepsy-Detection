@@ -133,14 +133,35 @@ class MainWindow(QMainWindow):
     # Action Handler Slots
     # ====================================================
     def open_dataset_folder(self):
-        self.module_combo.setCurrentText("Data Importer")
-        if hasattr(self.left_panel, 'import_panel'):
-            self.left_panel.import_panel.select_directory()
+        initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+        folder = QFileDialog.getExistingDirectory(self, "Select Dataset Directory", initial_dir)
+        if folder:
+            if hasattr(self.left_panel, 'import_panel'):
+                self.left_panel.import_panel.folder_input.setText(folder)
+                self.left_panel.import_panel.load_subjects_from_directory(folder)
+            if hasattr(self.left_panel, 'main_panel'):
+                self.left_panel.main_panel.folder_input.setText(folder)
+                self.left_panel.main_panel.update_stage_preview()
+            self.left_panel.fastsurfer_panel.update_run_button_state()
+            self.left_panel.icp_panel.update_run_button_state()
+            self.left_panel.spharm_panel.update_run_button_state()
+            self.log(f"Dataset directory set: {folder}")
 
     def choose_output_folder(self):
-        self.module_combo.setCurrentText("Data Importer")
-        if hasattr(self.left_panel, 'import_panel'):
-            self.left_panel.import_panel.select_output_directory()
+        initial_dir = getattr(self, '_last_output_dir', None)
+        if not initial_dir or not os.path.isdir(initial_dir):
+            if hasattr(self.left_panel, 'main_panel') and self.left_panel.main_panel.out_folder_input.text().strip():
+                initial_dir = self.left_panel.main_panel.out_folder_input.text().strip()
+            elif hasattr(self.left_panel, 'import_panel') and self.left_panel.import_panel.out_folder_input.text().strip():
+                initial_dir = self.left_panel.import_panel.out_folder_input.text().strip()
+            else:
+                initial_dir = "D:/" if os.path.exists("D:/") else "C:/"
+
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Directory", initial_dir)
+        if folder:
+            self._last_output_dir = folder
+            self.left_panel.set_global_output_directory(folder)
+            self.log(f"Global output directory set: {folder}")
 
     def open_single_mesh(self):
         filepath, _ = QFileDialog.getOpenFileName(
@@ -156,15 +177,51 @@ class MainWindow(QMainWindow):
         filepath, _ = QFileDialog.getSaveFileName(
             self, "Save 3D Viewport Screenshot", default_name, "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
         )
-        if filepath:
-            vtkWidget = getattr(self.right_panel.viewer, 'mesh_vtkWidget', None)
-            if vtkWidget:
-                pixmap = vtkWidget.grab()
-                if pixmap.save(filepath):
-                    self.log(f"3D Screenshot saved successfully: {filepath}")
-                    self.console.set_status(f"Snapshot saved: {os.path.basename(filepath)}", "#2ecc71")
-                else:
-                    self.log(f"[ERROR] Failed to save screenshot to {filepath}")
+        if not filepath:
+            return
+
+        vtkWidget = getattr(self.right_panel.viewer, 'mesh_vtkWidget', None)
+        if not vtkWidget:
+            self.log("[ERROR] 3D mesh viewport is not available.")
+            return
+
+        saved = False
+        try:
+            import vtk
+            rw = vtkWidget.GetRenderWindow()
+            rw.Render()
+
+            w2if = vtk.vtkWindowToImageFilter()
+            w2if.SetInput(rw)
+            w2if.SetInputBufferTypeToRGB()
+            w2if.ReadFrontBufferOn()
+            w2if.Update()
+
+            ext = os.path.splitext(filepath)[1].lower()
+            if ext in ('.jpg', '.jpeg'):
+                writer = vtk.vtkJPEGWriter()
+                writer.SetQuality(95)
+            else:
+                writer = vtk.vtkPNGWriter()
+
+            writer.SetFileName(filepath)
+            writer.SetInputConnection(w2if.GetOutputPort())
+            writer.Write()
+
+            if os.path.isfile(filepath) and os.path.getsize(filepath) > 0:
+                saved = True
+        except Exception as e:
+            self.log(f"[WARNING] VTK direct capture fallback: {e}")
+
+        if not saved:
+            pixmap = vtkWidget.grab()
+            saved = pixmap.save(filepath)
+
+        if saved:
+            self.log(f"3D Screenshot saved successfully: {filepath}")
+            self.console.set_status(f"Snapshot saved: {os.path.basename(filepath)}", "#2ecc71")
+        else:
+            self.log(f"[ERROR] Failed to save screenshot to {filepath}")
 
     def export_predictions_csv(self):
         rp = getattr(self.left_panel, 'result_panel', None)
@@ -377,6 +434,7 @@ class MainWindow(QMainWindow):
         index = self.module_combo.findText(module_name)
         self.left_panel.switch_module(index)
         self.right_panel.viewer.clear_all_patient_meshes()
+        active_panel = self.left_panel.get_current_module_panel()
 
         modules_with_right_ui = {
             "Main Panel": True,
@@ -407,6 +465,13 @@ class MainWindow(QMainWindow):
             elif module_name == "FastSurfer Segmentation":
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(True)
+            elif module_name == "Data Importer":
+                has_subj = hasattr(active_panel, 'subjects_table') and active_panel.subjects_table.rowCount() > 0 and bool(active_panel.subjects_table.selectedItems())
+                if has_subj:
+                    self.right_panel.set_view_mode("quad", module_name)
+                    self.right_panel.viewer.set_mesh_view_visible(False)
+                else:
+                    self.right_panel.set_view_mode("full_3d", module_name)
             else:
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(False)
@@ -415,7 +480,6 @@ class MainWindow(QMainWindow):
             if hasattr(self.right_panel, 'clear_gradcam_view'):
                 self.right_panel.clear_gradcam_view(render_now=False)
 
-        active_panel = self.left_panel.get_current_module_panel()
         if module_name == "Data Importer" and hasattr(active_panel, 'display_selected_subject'):
             active_panel.display_selected_subject()
         elif hasattr(active_panel, 'results_table') and active_panel.results_table.rowCount() > 0:
