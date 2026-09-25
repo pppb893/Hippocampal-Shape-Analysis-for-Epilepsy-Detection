@@ -188,7 +188,7 @@ class ResultPanel(QWidget):
         path_row.addWidget(refresh_btn)
         h_layout.addLayout(path_row)
 
-        model_badge = QLabel("Architecture: <b>ResNet1D (1D-CNN) + PLS-DA</b> | Weights: <b>Trained & Frozen</b>")
+        model_badge = QLabel("Architecture: <b>(1D-CNN) + PLS-DA</b> | Weights: <b>Trained & Frozen</b>")
         model_badge.setWordWrap(True)
         model_badge.setStyleSheet("font-size: 10px; color: #576574; background: #ffffff; padding: 4px 6px; border-radius: 3px; border: 1px solid #e9ecef;")
         h_layout.addWidget(model_badge)
@@ -244,7 +244,7 @@ class ResultPanel(QWidget):
         eval_opts_layout.addStretch()
         e_layout.addLayout(eval_opts_layout)
 
-        self.predict_btn = QPushButton("Run ResNet Batch Prediction")
+        self.predict_btn = QPushButton("Run Prediction")
         self.predict_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);

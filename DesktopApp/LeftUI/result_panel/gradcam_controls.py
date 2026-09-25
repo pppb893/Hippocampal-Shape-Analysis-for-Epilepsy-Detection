@@ -61,7 +61,7 @@ class GradCamControlsWidget(QWidget):
         c_layout.addWidget(QLabel("Colormap Heatmap Mode:"))
         self.rb_dist = QRadioButton("Deformation Mag (mm)")
         self.rb_signed = QRadioButton("Signed Atrophy (Inward/Expansion)")
-        self.rb_gradcam = QRadioButton("ResNet Grad-CAM Attention")
+        self.rb_gradcam = QRadioButton("Grad-CAM Attention")
         self.rb_dist.setChecked(True)
 
         self.cam_mode_group = QButtonGroup(self)

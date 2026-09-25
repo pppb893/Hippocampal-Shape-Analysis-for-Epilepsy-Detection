@@ -285,7 +285,7 @@ class MainPanel(QWidget):
         self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage3_lbl)
 
-        self.stage4_lbl = QLabel("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
+        self.stage4_lbl = QLabel("  4. Prediction & 3D Grad-CAM: Pending")
         self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
         stages_layout.addWidget(self.stage4_lbl)
 
@@ -295,7 +295,7 @@ class MainPanel(QWidget):
         self.status_lbl = QLabel("")
 
         # Run Button (matches FastSurfer, ICP, SPHARM, Result panels)
-        self.run_btn = QPushButton("Run Full Pipeline (FastSurfer -> ICP -> SPHARM -> Result)")
+        self.run_btn = QPushButton("Run Full Pipeline")
         self.run_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
@@ -390,7 +390,7 @@ class MainPanel(QWidget):
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
             self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
+            self.stage4_lbl.setText("  4. Prediction & 3D Grad-CAM: Pending")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
             self.status_lbl.setText("Ready: Select Input MRI Directory & Output Directory to begin.")
             self.status_lbl.setStyleSheet("color: #2c3e50; background-color: #eaf2f8; border: 1px solid #d4e6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
@@ -430,13 +430,13 @@ class MainPanel(QWidget):
 
         # Stage 4 label
         if has_result:
-            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Results exist (Will skip)")
+            self.stage4_lbl.setText("  4.Prediction & 3D Grad-CAM: Results exist (Will skip)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
         elif has_fs and has_icp and has_spharm:
-            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Missing (Will run next)")
+            self.stage4_lbl.setText("  4. Prediction & 3D Grad-CAM: Missing (Will run next)")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
-            self.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Pending")
+            self.stage4_lbl.setText("  4. Epilepsy Prediction & 3D Grad-CAM: Pending")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         # Status text summary
@@ -444,16 +444,16 @@ class MainPanel(QWidget):
             self.status_lbl.setText("Complete results exist in output folder. Running will refresh all tables without re-computing.")
             self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and has_icp and has_spharm and not has_result:
-            self.status_lbl.setText("FastSurfer, ICP & SPHARM results exist (Skipping 1-3). Running will execute ResNet Prediction & 3D Grad-CAM.")
+            self.status_lbl.setText("FastSurfer, ICP & SPHARM results exist (Skipping 1-3). Running will execute Prediction & 3D Grad-CAM.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and has_icp and not has_spharm:
-            self.status_lbl.setText("FastSurfer & ICP results exist (Skipping both). Running will execute SPHARM-PDM -> ResNet Prediction.")
+            self.status_lbl.setText("FastSurfer & ICP results exist (Skipping both). Running will execute SPHARM-PDM -> Prediction.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and not has_icp:
-            self.status_lbl.setText("FastSurfer results exist (Skipping FastSurfer). Running will execute ICP -> SPHARM -> ResNet Prediction.")
+            self.status_lbl.setText("FastSurfer results exist (Skipping FastSurfer). Running will execute ICP -> SPHARM -> Prediction.")
             self.status_lbl.setStyleSheet("color: #1a5276; background-color: #ebf5fb; border: 1px solid #aed6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         else:
-            self.status_lbl.setText("Ready to run full pipeline (FastSurfer -> ICP -> SPHARM -> Result).")
+            self.status_lbl.setText("Ready to run full pipeline.")
             self.status_lbl.setStyleSheet("color: #2c3e50; background-color: #eaf2f8; border: 1px solid #d4e6f1; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
 
 
