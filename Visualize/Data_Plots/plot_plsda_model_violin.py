@@ -18,14 +18,16 @@ import seaborn as sns
 from scipy import stats
 from sklearn.cross_decomposition import PLSRegression
 
-# Set modern scientific visual style
-sns.set_theme(style="whitegrid", font="DejaVu Sans")
+# Set publication serif styling
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif', 'Georgia']
+plt.rcParams['mathtext.fontset'] = 'stix'
 plt.rcParams.update({
     "font.size": 11,
     "axes.labelsize": 12,
     "axes.titlesize": 13,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
     "legend.fontsize": 11,
     "figure.titlesize": 14
 })
@@ -51,8 +53,11 @@ def generate_violin_plots(side="right", dataset="Ds005602", output_dir=None):
     if not os.path.exists(train_csv):
         # Fallback search
         candidates = [
+            os.path.join(repo_root, "Model", "Dataset_1", side, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "Dataset_1", side, f"Dataset_1_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "All_Augment_tain", side, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(r"C:\Users\IHCK\Desktop\poinnet", f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
             os.path.join(repo_root, "Model", "Ds005602", side, f"Ds005602_{side.capitalize()}_train_xyz_coords.csv"),
-            os.path.join(repo_root, "Model", "All_Augment_tain", side, f"ALL_{side.capitalize()}_train_xyz_coords.csv")
         ]
         for c in candidates:
             if os.path.exists(c):
@@ -66,8 +71,10 @@ def generate_violin_plots(side="right", dataset="Ds005602", output_dir=None):
     print(f"Loading data from: {train_csv}")
     train_df = pd.read_csv(train_csv)
     
-    meta_cols = ["Subject", "Group_Name", "Group_Label", "BinaryClass", "Class", "Unnamed: 0"]
-    coord_cols = [c for c in train_df.columns if c not in meta_cols]
+    coord_cols = [c for c in train_df.columns if c.startswith(('x_', 'y_', 'z_'))]
+    if not coord_cols:
+        meta_cols = ["Subject", "Group", "Group_Name", "Group_Label", "BinaryClass", "Class", "DataType", "Unnamed: 0"]
+        coord_cols = [c for c in train_df.columns if c not in meta_cols]
     
     X_train_flat = train_df[coord_cols].values.astype(np.float32)
     y_train = (train_df["Group_Label"].values if "Group_Label" in train_df.columns else train_df["BinaryClass"].values).astype(int)
@@ -232,95 +239,121 @@ def generate_violin_plots(side="right", dataset="Ds005602", output_dir=None):
     print(f"Saved: {fig1_path}")
 
     # =========================================================================
-    # Figure 2: Focused High-Detail Violin Plot for Top 3 Components
     # =========================================================================
-    print("Generating Figure 2: Top 3 Components Detailed Violin Plot...")
-    top3_names = [f"PLS{k+1}" for k in top3_indices]
-    df_top3 = df_plot[df_plot["Component"].isin(top3_names)].copy()
-    
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5.5), sharey=False)
-    
-    for idx, (k, ax_sub) in enumerate(zip(top3_indices, axes)):
-        c_name = f"PLS{k+1}"
-        rank = top3_ranks[k]
-        sub_df = df_top3[df_top3["Component"] == c_name]
-        row_stat = df_stats[df_stats["Component"] == c_name].iloc[0]
-        
-        # Violin plot
-        sns.violinplot(
-            data=sub_df,
-            x="Group",
-            y="Latent Score",
-            hue="Group",
-            palette=class_palette,
-            legend=False,
-            inner=None,
-            alpha=0.45,
-            cut=1.5,
-            ax=ax_sub
-        )
-        
-        # Overlay Box plot
-        sns.boxplot(
-            data=sub_df,
-            x="Group",
-            y="Latent Score",
-            hue="Group",
-            palette=class_palette,
-            legend=False,
-            width=0.22,
-            boxprops=dict(alpha=0.8),
-            showcaps=True,
-            ax=ax_sub
-        )
-        
-        # Overlay individual subject points with jitter
-        sns.stripplot(
-            data=sub_df,
-            x="Group",
-            y="Latent Score",
-            hue="Group",
-            palette=class_palette,
-            legend=False,
-            size=5,
-            jitter=0.2,
-            alpha=0.75,
-            edgecolor="black",
-            linewidth=0.5,
-            ax=ax_sub
-        )
-        
-        # Annotate statistical test bracket
-        y_top = sub_df["Latent Score"].max()
-        y_bot = sub_df["Latent Score"].min()
-        y_range = y_top - y_bot
-        bar_y = y_top + y_range * 0.12
-        bar_h = y_range * 0.04
-        
-        ax_sub.plot([0, 0, 1, 1], [bar_y, bar_y + bar_h, bar_y + bar_h, bar_y], lw=1.5, c="#2c3e50")
-        p_str = f"p = {row_stat['P_Value']:.2e} ({row_stat['Significance']})" if row_stat['P_Value'] < 0.001 else f"p = {row_stat['P_Value']:.3f} ({row_stat['Significance']})"
-        ax_sub.text(0.5, bar_y + bar_h + y_range * 0.02, p_str, ha="center", va="bottom", fontsize=10, fontweight="bold", color="#c0392b")
-        
-        # Cohen's d badge
-        ax_sub.text(0.5, y_bot - y_range * 0.14, f"Effect Size (Cohen's d): {row_stat['Cohens_d']:.2f}",
-                    ha="center", va="top", fontsize=9, fontstyle="italic", color="#555")
-        
-        ax_sub.set_ylim(y_bot - y_range * 0.22, bar_y + y_range * 0.22)
-        ax_sub.set_title(f"Rank {rank}: {c_name}\n({side.capitalize()} Hippocampus)", fontsize=12, fontweight="bold", color="#2c3e50")
-        ax_sub.set_xlabel("")
-        ax_sub.set_ylabel("Component Latent Score ($t$)", fontsize=11, fontweight="bold")
-        
-    plt.suptitle(
-        f"Top 3 Selected PLS-DA Components Comparison Across Classes ({side.capitalize()} - {dataset})\n"
-        f"[Directly feeding into -3.0 SD to +3.0 SD Distance Mapping & Grad-CAM Mesh Generation]",
-        fontsize=13, fontweight="bold"
+    # Common helper to generate high-detail publication box plots
+    # =========================================================================
+    extra_sync_dirs = [
+        os.path.join(repo_root, "Model", dataset, side, "plots"),
+        os.path.join(repo_root, "Model", dataset, "plots", "gradcam_plsda"),
+        os.path.join(repo_root, "Model_Results_Excel", "07_Detailed_Model_Plots", dataset, "gradcam_plsda"),
+        os.path.join(repo_root, "Model_Results_Excel", "08_PLSDA_Class_Violin_Plots", dataset, side),
+        r"C:\Users\IHCK\Desktop\Dataset_1_Bootstrap_Results\plots\gradcam_plsda"
+    ]
+
+    def render_boxplot_panels(selected_indices, fig_title, base_name):
+        n_panels = len(selected_indices)
+        fig_w = 5.2 * n_panels
+        fig, axes = plt.subplots(1, n_panels, figsize=(fig_w, 5.5), sharey=False)
+        if n_panels == 1:
+            axes = [axes]
+        fig.patch.set_facecolor('white')
+
+        for idx, (k, ax_sub) in enumerate(zip(selected_indices, axes)):
+            c_name = f"PLS{k+1}"
+            rank = idx + 1
+            sub_df = df_plot[df_plot["Component"] == c_name]
+            row_stat = df_stats[df_stats["Component"] == c_name].iloc[0]
+
+            ax_sub.set_facecolor('white')
+
+            # Publication-grade Box Plot (No Violin, No Datapoints/Stripplot)
+            sns.boxplot(
+                data=sub_df,
+                x="Group",
+                y="Latent Score",
+                hue="Group",
+                palette=class_palette,
+                legend=False,
+                width=0.45,
+                boxprops=dict(alpha=0.85, edgecolor="black", linewidth=1.5),
+                medianprops=dict(color="black", linewidth=2.0),
+                whiskerprops=dict(color="black", linewidth=1.5, linestyle="-"),
+                capprops=dict(color="black", linewidth=1.5),
+                showcaps=True,
+                showfliers=False,
+                ax=ax_sub
+            )
+
+            # Locked y-axis scale: strictly -80 to 80 for all components
+            ax_sub.set_ylim(-80, 80)
+            ax_sub.set_yticks([-80, -60, -40, -20, 0, 20, 40, 60, 80])
+
+            # Annotate statistical test bracket & exact p-value at aligned top position
+            bar_y = 65.0
+            bar_h = 3.5
+            ax_sub.plot([0, 0, 1, 1], [bar_y, bar_y + bar_h, bar_y + bar_h, bar_y], lw=1.5, c="#2c3e50")
+            p_str = f"p = {row_stat['P_Value']:.2e} ({row_stat['Significance']})" if row_stat['P_Value'] < 0.001 else f"p = {row_stat['P_Value']:.3f} ({row_stat['Significance']})"
+            ax_sub.text(0.5, 70.0, p_str, ha="center", va="bottom", fontsize=11.5, fontweight="bold", color="#c0392b")
+
+            ax_sub.set_title(f"Rank {rank}: {c_name}\n({side.capitalize()} Hippocampus)", fontsize=13, fontweight="bold", color="#2c3e50", pad=10)
+            ax_sub.set_xlabel("")
+            ax_sub.set_ylabel("Component Latent Score ($t$)", fontsize=12, fontweight="bold")
+
+            # Strict publication styling: Solid black 1.5pt frame, outward ticks, NO grid
+            for spine in ax_sub.spines.values():
+                spine.set_visible(True)
+                spine.set_color("black")
+                spine.set_linewidth(1.5)
+            ax_sub.grid(False)
+            ax_sub.tick_params(which="major", direction="out", length=6, width=1.5, color="black", labelsize=11)
+            ax_sub.tick_params(which="minor", direction="out", length=3.5, width=1.0, color="black")
+
+        plt.suptitle(fig_title, fontsize=14, fontweight="bold", y=0.98)
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
+
+        # Save to output_dir, excel_dir, and extra_sync_dirs
+        all_save_dirs = [output_dir, excel_dir] + extra_sync_dirs
+        for d in all_save_dirs:
+            try:
+                os.makedirs(d, exist_ok=True)
+                plt.savefig(os.path.join(d, f"{base_name}.png"), dpi=300)
+                plt.savefig(os.path.join(d, f"{base_name}_{side}.png"), dpi=300)
+                if "top3" in base_name:
+                    plt.savefig(os.path.join(d, "plsda_top3_parameters_detailed_violin.png"), dpi=300)
+            except Exception:
+                pass
+        plt.close()
+        print(f"Saved: {base_name} ({n_panels} panels) across directories.")
+
+    # =========================================================================
+    # Figure 2A: Full Top 3 Components (PLS1, PLS2, PLS3) Detailed Box Plot
+    # =========================================================================
+    print("Generating Figure 2A: Full Top 3 Components (3 Panels) Box Plot...")
+    full_top3_indices = top3_indices[:3]
+    render_boxplot_panels(
+        selected_indices=full_top3_indices,
+        fig_title=(
+            f"Top 3 Selected PLS-DA Components Comparison Across Classes ({side.capitalize()} Hippocampus)\n"
+            f"[Directly feeding into -3.0 SD to +3.0 SD Distance Mapping & Grad-CAM Mesh Generation]"
+        ),
+        base_name="plsda_top3_parameters_boxplot"
     )
-    plt.tight_layout()
-    fig2_path = os.path.join(output_dir, "plsda_top3_parameters_detailed_violin.png")
-    plt.savefig(fig2_path, dpi=300)
-    plt.savefig(os.path.join(excel_dir, "plsda_top3_parameters_detailed_violin.png"), dpi=300)
-    plt.close()
-    print(f"Saved: {fig2_path}")
+
+    # =========================================================================
+    # Figure 2B: Focused Top 2 Components (PLS1 & PLS2) Detailed Box Plot
+    # =========================================================================
+    print("Generating Figure 2B: Top 2 Components (2 Panels) Box Plot...")
+    focused_top2_indices = [k for k in top3_indices if k in (0, 1)]
+    if len(focused_top2_indices) < 2:
+        focused_top2_indices = top3_indices[:2]
+    render_boxplot_panels(
+        selected_indices=focused_top2_indices,
+        fig_title=(
+            f"Top 2 Selected PLS-DA Components Comparison Across Classes ({side.capitalize()} Hippocampus)\n"
+            f"[Directly feeding into -3.0 SD to +3.0 SD Distance Mapping & Grad-CAM Mesh Generation]"
+        ),
+        base_name="plsda_top2_parameters_boxplot"
+    )
 
     # =========================================================================
     # Figure 3: Model Classification Predictions Violin Plot
@@ -434,10 +467,12 @@ if __name__ == "__main__":
     else:
         # Default: Process all major cohorts
         cohorts = [
-            ("right", "Ds005602"),
-            ("left", "Ds005602"),
+            ("right", "Dataset_1"),
+            ("left", "Dataset_1"),
             ("right", "All_Augment_tain"),
             ("left", "All_Augment_tain"),
+            ("right", "Ds005602"),
+            ("left", "Ds005602"),
         ]
         for s_c, d_c in cohorts:
             print("\n" + "=" * 70)

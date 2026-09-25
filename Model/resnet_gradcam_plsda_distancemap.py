@@ -314,7 +314,24 @@ def run_pipeline(
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     
     # 1. Locate data files based on dataset selection
-    if str(dataset).lower() in ("ds005602", "5602"):
+    if str(dataset).lower() in ("dataset_1", "dataset1", "ds1", "1"):
+        dataset_name = "Dataset_1"
+        data_dir = os.path.join(repo_root, "Model", "Dataset_1", side)
+        candidates_tr = [
+            os.path.join(data_dir, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(data_dir, f"Dataset_1_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(r"C:\Users\IHCK\Desktop\poinnet", f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "All_Augment_tain", side, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+        ]
+        candidates_te = [
+            os.path.join(data_dir, f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+            os.path.join(data_dir, f"Dataset_1_{side.capitalize()}_test_xyz_coords.csv"),
+            os.path.join(r"C:\Users\IHCK\Desktop\poinnet", f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "All_Augment_tain", side, f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+        ]
+        train_csv = next((c for c in candidates_tr if os.path.exists(c)), None)
+        test_csv = next((c for c in candidates_te if os.path.exists(c)), None)
+    elif str(dataset).lower() in ("ds005602", "5602", "dataset_2", "dataset2", "ds2", "2"):
         dataset_name = "Ds005602"
         data_dir = os.path.join(repo_root, "Model", "Ds005602", side)
         train_csv = os.path.join(data_dir, f"Ds005602_{side.capitalize()}_train_xyz_coords.csv")
@@ -322,8 +339,18 @@ def run_pipeline(
     else:
         dataset_name = "All_Augment_tain"
         data_dir = os.path.join(repo_root, "Model", "All_Augment_tain", side)
-        train_csv = os.path.join(data_dir, f"ALL_{side.capitalize()}_train_xyz_coords.csv")
-        test_csv = os.path.join(data_dir, f"ALL_{side.capitalize()}_test_xyz_coords.csv")
+        candidates_tr = [
+            os.path.join(data_dir, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "Dataset_1", side, f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+            os.path.join(r"C:\Users\IHCK\Desktop\poinnet", f"ALL_{side.capitalize()}_train_xyz_coords.csv"),
+        ]
+        candidates_te = [
+            os.path.join(data_dir, f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+            os.path.join(repo_root, "Model", "Dataset_1", side, f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+            os.path.join(r"C:\Users\IHCK\Desktop\poinnet", f"ALL_{side.capitalize()}_test_xyz_coords.csv"),
+        ]
+        train_csv = next((c for c in candidates_tr if os.path.exists(c)), None)
+        test_csv = next((c for c in candidates_te if os.path.exists(c)), None)
 
     print("=" * 70)
     print(f"ResNet Grad-CAM & PLS-DA 8-Component Distance Mapping: {side.upper()} [{dataset_name}]")
@@ -337,8 +364,10 @@ def run_pipeline(
     test_df = pd.read_csv(test_csv) if os.path.exists(test_csv) else None
     
     # 2. Extract vertex coordinate columns (x_0, y_0, z_0 ... x_1001, y_1001, z_1001)
-    meta_cols = ["Subject", "Group_Name", "Group_Label", "BinaryClass", "Class", "Unnamed: 0"]
-    coord_cols = [c for c in train_df.columns if c not in meta_cols]
+    coord_cols = [c for c in train_df.columns if c.startswith(('x_', 'y_', 'z_'))]
+    if not coord_cols:
+        meta_cols = ["Subject", "Group", "Group_Name", "Group_Label", "BinaryClass", "Class", "DataType", "Unnamed: 0"]
+        coord_cols = [c for c in train_df.columns if c not in meta_cols]
     
     num_coords = len(coord_cols)
     num_pts = num_coords // 3
@@ -697,8 +726,8 @@ def run_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ResNet Grad-CAM & PLS-DA Top-3 Distance Mapping Pipeline")
-    parser.add_argument("--side", type=str, default="left", choices=["left", "right"], help="Hippocampus side (left or right)")
-    parser.add_argument("--dataset", type=str, default="Ds005602", choices=["Ds005602", "All_Augment_tain"], help="Dataset (default: Ds005602)")
+    parser.add_argument("--side", type=str, default="right", choices=["left", "right"], help="Hippocampus side (left or right, default: right)")
+    parser.add_argument("--dataset", type=str, default="Dataset_1", choices=["Dataset_1", "All_Augment_tain", "Ds005602"], help="Dataset (default: Dataset_1)")
     parser.add_argument("--n_components", type=int, default=8, help="Number of PLS-DA components to extract (default: 8)")
     parser.add_argument("--step", type=float, default=0.1, help="Step size for distance mapping sweep (default: 0.1)")
     parser.add_argument("--epochs", type=int, default=50, help="Training epochs for ResNet1D (default: 50)")
