@@ -117,85 +117,10 @@ class FastsurferPanel(QWidget):
         help_label.setStyleSheet("color: #555; font-size: 11px;")
         fs_layout.addWidget(help_label)
         
-        # 1. Directory Selector Group (For loading existing results without re-running)
-        dir_group = QGroupBox("FastSurfer Output / Results Directory")
-        dir_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #dcdde1;
-                border-radius: 6px;
-                margin-top: 15px;
-                background-color: #f8f9fa;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 8px;
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 12px;
-            }
-        """)
-        dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(10, 20, 10, 10)
-        dir_layout.setSpacing(8)
-        
-        dir_row = QHBoxLayout()
+        # Internal reference to maintain compatibility with left_panel & main_panel
         self.fs_dir_input = QLineEdit()
-        self.fs_dir_input.setPlaceholderText("No output directory selected...")
-        dir_row.addWidget(self.fs_dir_input)
         
-        browse_dir_btn = QPushButton("Browse")
-        browse_dir_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
-        """)
-        browse_dir_btn.clicked.connect(self.browse_results_directory)
-        dir_row.addWidget(browse_dir_btn)
-        
-        load_btn = QPushButton("Reload")
-        load_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 6px 12px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
-        """)
-        load_btn.clicked.connect(self.populate_results_table)
-        dir_row.addWidget(load_btn)
-        
-        dir_layout.addLayout(dir_row)
-        fs_layout.addWidget(dir_group)
-        
-        # 2. FastSurfer Execution Parameters
+        # 1. FastSurfer Execution Parameters
         fs_group = QGroupBox("FastSurfer Execution Parameters")
         fs_group.setStyleSheet("""
             QGroupBox {
@@ -504,12 +429,16 @@ class FastsurferPanel(QWidget):
         self.signal_overlay_all_toggled.emit(True, filepaths, self.current_side_filter)
 
     def populate_results_table(self):
-        target_dir = self.fs_dir_input.text().strip()
-        if not target_dir and self.get_output_folder and self.get_output_folder():
+        target_dir = ""
+        if self.get_output_folder and self.get_output_folder():
             out_f = self.get_output_folder().strip()
             if out_f and os.path.isdir(out_f):
-                target_dir = os.path.join(os.path.abspath(out_f), "fastsurfer")
+                cand = os.path.join(os.path.abspath(out_f), "fastsurfer")
+                target_dir = cand if os.path.isdir(cand) else out_f
                 self.fs_dir_input.setText(target_dir)
+
+        if not target_dir:
+            target_dir = self.fs_dir_input.text().strip()
             
         self.all_files = []
         if os.path.isdir(target_dir):
