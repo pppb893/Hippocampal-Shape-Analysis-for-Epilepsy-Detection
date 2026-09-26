@@ -602,15 +602,21 @@ class MainPanel(QWidget):
         self.table.blockSignals(False)
 
         if self.table.rowCount() > 0:
-            self.table.selectRow(0)
             if self.isVisible():
+                self.table.selectRow(0)
                 self.on_table_row_selected()
+            else:
+                self.table.blockSignals(True)
+                self.table.selectRow(0)
+                self.table.blockSignals(False)
         else:
             if self.isVisible():
                 self.signal_mesh_selected.emit("", "all")
                 self.signal_diagnostic_info.emit("")
 
     def on_table_row_selected(self):
+        if not self.isVisible():
+            return
         selected = self.table.selectedItems()
         if not selected:
             return

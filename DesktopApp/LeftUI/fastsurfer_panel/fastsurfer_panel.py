@@ -372,19 +372,41 @@ class FastsurferPanel(QWidget):
         super().showEvent(event)
         self.update_run_button_state()
 
+    def get_effective_input_dir(self):
+        """
+        Determines the effective MRI input directory.
+        Priority 1: 'data import' or 'data_import' repository inside the output directory.
+        Priority 2: get_folder() from Data Importer.
+        """
+        out_dir = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_dir and os.path.isdir(out_dir):
+            for cand_name in ["data import", "data_import"]:
+                cand_path = os.path.join(out_dir, cand_name)
+                if os.path.isdir(cand_path):
+                    # Check if any MRI files exist
+                    mris = [f for f in os.listdir(cand_path) if f.lower().endswith((".nii.gz", ".nii", ".mgz", ".nrrd"))]
+                    if mris:
+                        return cand_path
+
+        raw_in = self.get_folder().strip() if self.get_folder else ""
+        if raw_in and os.path.isdir(raw_in):
+            return raw_in
+        return ""
+
     def update_run_button_state(self):
-        in_dir = self.get_folder().strip() if self.get_folder else ""
+        effective_in = self.get_effective_input_dir()
         out_dir = self.get_output_folder().strip() if self.get_output_folder else ""
         
-        has_in = bool(in_dir and os.path.isdir(in_dir))
+        has_in = bool(effective_in and os.path.isdir(effective_in))
         has_out = bool(out_dir and os.path.isdir(out_dir))
         
         if not has_out or not has_in:
             self.run_fs_btn.setEnabled(False)
-            self.run_fs_btn.setToolTip("")
+            self.run_fs_btn.setToolTip("Please select Input and Output directories in Data Importer")
         else:
             self.run_fs_btn.setEnabled(True)
-            self.run_fs_btn.setToolTip("Click to run FastSurfer Pipeline")
+            source_desc = "from 'data import'" if ("data import" in effective_in.lower() or "data_import" in effective_in.lower()) else "from input folder"
+            self.run_fs_btn.setToolTip(f"Click to run FastSurfer Pipeline ({source_desc})")
                 
             # If fs_dir_input is empty, pre-fill it with output_dir/fastsurfer
             if not self.fs_dir_input.text().strip():
@@ -400,15 +422,21 @@ class FastsurferPanel(QWidget):
             self.populate_results_table()
 
     def run_fastsurfer_process(self):
-        input_dir = self.get_folder().strip() if self.get_folder else ""
-        if not input_dir or not os.path.isdir(input_dir):
-            self.signal_log_message.emit("[ERROR] Please select a valid input directory first in Data Importer.")
-            return
-            
         out_dir = self.get_output_folder().strip() if self.get_output_folder else ""
         if not out_dir or not os.path.isdir(out_dir):
             self.signal_log_message.emit("[ERROR] Please select an Output Directory in Data Importer before running.")
             return
+
+        input_dir = self.get_effective_input_dir()
+        if not input_dir or not os.path.isdir(input_dir):
+            self.signal_log_message.emit("[ERROR] Please import MRI scans to 'data import' or select a valid input directory first.")
+            return
+
+        is_from_data_import = ("data import" in input_dir.lower() or "data_import" in input_dir.lower())
+        if is_from_data_import:
+            self.signal_log_message.emit(f">>> FastSurfer Pipeline using MRI images from 'data import' repository: {input_dir}")
+        else:
+            self.signal_log_message.emit(f">>> FastSurfer Pipeline using input directory: {input_dir}")
             
         self.run_fs_btn.setEnabled(False)
         self.results_table.setRowCount(0)

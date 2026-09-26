@@ -528,6 +528,8 @@ class VtkViewer(QWidget):
             self.mesh_frame.show()
             
             self.set_3d_plane_buttons_visible(False)
+            if hasattr(self, 'slice_mgr'):
+                self.slice_mgr.hide_3d_planes(uncheck_buttons=True)
             self.mesh_max_btn.setVisible(False)
             
             is_result = ("result" in str(module_name).lower()) or ("main" in str(module_name).lower())
@@ -559,7 +561,10 @@ class VtkViewer(QWidget):
             
         else: # quad mode
             self.maximized_frame = None
-            if module_name == "Data Importer":
+            is_fastsurfer = "fastsurfer" in str(self.current_module_name).lower()
+            if is_fastsurfer:
+                self.mesh_view_enabled = True
+            elif module_name == "Data Importer":
                 self.mesh_view_enabled = False
             
             self.grid_layout.removeWidget(self.mesh_frame)
@@ -577,8 +582,12 @@ class VtkViewer(QWidget):
             if self.multi_mesh_actors:
                 self.clear_multi_mesh_actors()
                 
-            if self.mesh_view_enabled:
+            if is_fastsurfer:
                 self.set_3d_plane_buttons_visible(True)
+            else:
+                self.set_3d_plane_buttons_visible(False)
+                if hasattr(self, 'slice_mgr'):
+                    self.slice_mgr.hide_3d_planes(uncheck_buttons=True)
                 
             self.update_legend()
             self.mesh_vtkWidget.GetRenderWindow().Render()
@@ -604,11 +613,19 @@ class VtkViewer(QWidget):
         self.current_mesh_path = filepath
         self.current_side_filter = side_filter
 
+        is_fastsurfer = "fastsurfer" in str(getattr(self, 'current_module_name', '')).lower()
         if self.view_mode != "full_3d":
             self.set_mesh_view_visible(True)
-            self.set_3d_plane_buttons_visible(True)
+            if is_fastsurfer:
+                self.set_3d_plane_buttons_visible(True)
+            else:
+                self.set_3d_plane_buttons_visible(False)
+                if hasattr(self, 'slice_mgr'):
+                    self.slice_mgr.hide_3d_planes(uncheck_buttons=True)
         else:
             self.set_3d_plane_buttons_visible(False)
+            if hasattr(self, 'slice_mgr'):
+                self.slice_mgr.hide_3d_planes(uncheck_buttons=True)
         
         if self.mesh_actor is not None:
             self.mesh_renderer.RemoveActor(self.mesh_actor)

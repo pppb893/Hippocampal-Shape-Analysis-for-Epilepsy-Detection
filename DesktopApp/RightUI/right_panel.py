@@ -49,50 +49,16 @@ class RightPanel(QWidget):
     def display_subject(self, filepath):
         self.viewer.set_mesh_view_visible(False)
         self.set_view_mode("quad", "Data Importer")
+        self.viewer.set_3d_plane_buttons_visible(False)
+        if hasattr(self.viewer, 'slice_mgr'):
+            self.viewer.slice_mgr.hide_3d_planes(uncheck_buttons=True)
+        if not filepath or not os.path.isfile(filepath):
+            if hasattr(self.viewer, 'slice_mgr'):
+                self.viewer.slice_mgr.clear_views()
+            return
+
         self.signal_log_message.emit(f"Displaying subject: {os.path.basename(filepath)}")
-        
-        # Search for LH and RH segmentation masks for this subject
-        parent_dir = os.path.dirname(os.path.abspath(filepath))
-        output_dir = os.path.dirname(parent_dir)
-        filename = os.path.basename(filepath)
-        
-        m = re.search(r'(sub-[a-zA-Z0-9]+)', filename)
-        subject_id = m.group(1) if m else None
-        
-        lh_mask = None
-        rh_mask = None
-        if subject_id:
-            search_bases = [output_dir, parent_dir, os.path.dirname(output_dir), os.path.join(output_dir, "fastsurfer")]
-            for base_d in search_bases:
-                if not os.path.isdir(base_d):
-                    continue
-                lh_candidates = [
-                    os.path.join(base_d, "left_hippocampus", f"lh_{subject_id}_hippocampus.nii.gz"),
-                    os.path.join(base_d, "left_hippocampus", f"{subject_id}_hippocampus_lh.nii.gz"),
-                    os.path.join(base_d, f"lh_{subject_id}_hippocampus.nii.gz"),
-                ]
-                rh_candidates = [
-                    os.path.join(base_d, "right_hippocampus", f"rh_{subject_id}_hippocampus.nii.gz"),
-                    os.path.join(base_d, "right_hippocampus", f"{subject_id}_hippocampus_rh.nii.gz"),
-                    os.path.join(base_d, f"rh_{subject_id}_hippocampus.nii.gz"),
-                ]
-                if not lh_mask:
-                    for c in lh_candidates:
-                        if os.path.isfile(c):
-                            lh_mask = c
-                            break
-                if not rh_mask:
-                    for c in rh_candidates:
-                        if os.path.isfile(c):
-                            rh_mask = c
-                            break
-                if lh_mask and rh_mask:
-                    break
-                    
-        if lh_mask or rh_mask:
-            self.viewer.display_segmentation_overlays(filepath, lh_mask, rh_mask, side_filter="all")
-        else:
-            self.viewer.display_subject(filepath)
+        self.viewer.display_subject(filepath)
 
     def display_mesh(self, filepath, side_filter="all"):
         if isinstance(filepath, list):
@@ -128,7 +94,12 @@ class RightPanel(QWidget):
             self.signal_log_message.emit(f"[INFO] 3D mesh rendered for {os.path.basename(filepath)} in Full 3D View.")
             return
 
-        self.viewer.set_3d_plane_buttons_visible(True)
+        if "fastsurfer" in str(current_mod).lower():
+            self.viewer.set_3d_plane_buttons_visible(True)
+        else:
+            self.viewer.set_3d_plane_buttons_visible(False)
+            if hasattr(self.viewer, 'slice_mgr'):
+                self.viewer.slice_mgr.hide_3d_planes(uncheck_buttons=True)
         
         # Infer output directory and subject id from the mesh filepath
         # Filepath looks like: .../output_dir/left_hippocampus/lh_sub-XXXX_hippocampus.nii.gz

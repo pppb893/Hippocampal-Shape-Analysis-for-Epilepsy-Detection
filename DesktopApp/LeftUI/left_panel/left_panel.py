@@ -203,6 +203,19 @@ class LeftPanel(QWidget):
         if hasattr(self.result_panel, 'on_spharm_dir_changed'):
             self.result_panel.on_spharm_dir_changed()
 
+        # Ensure active panel maintains correct viewport mode
+        cur_panel = self.get_current_module_panel()
+        if cur_panel == self.import_panel:
+            win = self.window()
+            if win and hasattr(win, 'right_panel'):
+                win.right_panel.set_view_mode("quad", "Data Importer")
+                if hasattr(win.right_panel, 'viewer'):
+                    win.right_panel.viewer.set_mesh_view_visible(False)
+                if hasattr(win.right_panel, 'clear_gradcam_view'):
+                    win.right_panel.clear_gradcam_view(render_now=False)
+            if hasattr(self.import_panel, 'display_selected_subject'):
+                self.import_panel.display_selected_subject()
+
     def get_current_module_panel(self):
         return self.stacked_widget.currentWidget()
 
@@ -213,14 +226,11 @@ class LeftPanel(QWidget):
             self.main_panel.update_stage_preview()
             self.main_panel.populate_main_table()
         elif current == self.import_panel:
-            in_dir = self.import_panel.get_folder().strip()
-            if in_dir and os.path.isdir(in_dir):
-                if getattr(self.import_panel, 'loaded_directory', None) != in_dir or self.import_panel.subjects_table.rowCount() == 0:
-                    self.import_panel.load_subjects_from_directory(in_dir)
+            out_dir = self.import_panel.get_output_folder().strip()
+            if out_dir and os.path.isdir(out_dir):
+                self.import_panel.load_subjects_from_output(out_dir)
             else:
-                out_dir = self.import_panel.get_output_folder().strip()
-                if out_dir and os.path.isdir(out_dir):
-                    self.import_panel.load_subjects_from_output(out_dir)
+                self.import_panel.clear_table_and_views()
         elif current == self.fastsurfer_panel:
             out_dir = self.import_panel.get_output_folder().strip()
             if out_dir and os.path.isdir(out_dir):

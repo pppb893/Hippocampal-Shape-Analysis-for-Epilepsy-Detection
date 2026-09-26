@@ -284,9 +284,30 @@ class SliceViewersManager:
         return slider, vtkWidget, slice_lbl, flip_btn, plane_3d_btn, reset_slice_btn
 
     def set_3d_plane_buttons_visible(self, visible: bool):
+        current_mod = getattr(self.parent, 'current_module_name', '')
+        if visible and "fastsurfer" not in str(current_mod).lower():
+            visible = False
+
         self.axial_3d_btn.setVisible(visible)
         self.coronal_3d_btn.setVisible(visible)
         self.sagittal_3d_btn.setVisible(visible)
+        if not visible:
+            self.hide_3d_planes(uncheck_buttons=True)
+
+    def hide_3d_planes(self, uncheck_buttons: bool = True):
+        """Hides all 3D slice planes and outlines from the 3D viewport."""
+        for act in [self.axial_3d_actor, self.coronal_3d_actor, self.sagittal_3d_actor,
+                    self.axial_outline_actor, self.coronal_outline_actor, self.sagittal_outline_actor]:
+            if act:
+                act.SetVisibility(False)
+        if uncheck_buttons:
+            for btn in [self.axial_3d_btn, self.coronal_3d_btn, self.sagittal_3d_btn]:
+                if btn:
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+        if hasattr(self.parent, 'mesh_vtkWidget') and self.parent.mesh_vtkWidget:
+            self.parent.mesh_vtkWidget.GetRenderWindow().Render()
 
     def reset_slice(self, orientation):
         if orientation == "axial" and hasattr(self, 'axial_initial_slice'):
@@ -300,6 +321,11 @@ class SliceViewersManager:
             self.parent.signal_log_message.emit(f"Sagittal view reset to initial slice {self.sagittal_initial_slice}.")
 
     def toggle_3d_plane(self, orientation, visible):
+        current_mod = getattr(self.parent, 'current_module_name', '')
+        if "fastsurfer" not in str(current_mod).lower():
+            self.hide_3d_planes(uncheck_buttons=True)
+            return
+
         if visible:
             self.parent.set_mesh_view_visible(True)
         
@@ -372,7 +398,60 @@ class SliceViewersManager:
                 if self.sagittal_3d_actor.GetVisibility():
                     self.parent.mesh_vtkWidget.GetRenderWindow().Render()
 
+    def clear_views(self):
+        # Remove old mask actors if they exist
+        if hasattr(self, 'mask_actors'):
+            for orientation in self.mask_actors:
+                for actor in orientation.get('actors', []):
+                    if actor:
+                        orientation['viewer'].GetRenderer().RemoveActor(actor)
+            self.mask_actors = []
+        for viewer in [self.axial_viewer, self.coronal_viewer, self.sagittal_viewer]:
+            if viewer and viewer.GetImageActor():
+                viewer.GetImageActor().SetVisibility(False)
+            if viewer and viewer.GetRenderer():
+                viewer.Render()
+        if hasattr(self, 'axial_slice_lbl'):
+            self.axial_slice_lbl.setText("Slice: - / -")
+        if hasattr(self, 'coronal_slice_lbl'):
+            self.coronal_slice_lbl.setText("Slice: - / -")
+        if hasattr(self, 'sagittal_slice_lbl'):
+            self.sagittal_slice_lbl.setText("Slice: - / -")
+        if hasattr(self, 'axial_slider'):
+            self.axial_slider.setEnabled(False)
+        if hasattr(self, 'coronal_slider'):
+            self.coronal_slider.setEnabled(False)
+        if hasattr(self, 'sagittal_slider'):
+            self.sagittal_slider.setEnabled(False)
+        if hasattr(self, 'axial_reset_btn'):
+            self.axial_reset_btn.setEnabled(False)
+        if hasattr(self, 'coronal_reset_btn'):
+            self.coronal_reset_btn.setEnabled(False)
+        if hasattr(self, 'sagittal_reset_btn'):
+            self.sagittal_reset_btn.setEnabled(False)
+        for act in [self.axial_3d_actor, self.coronal_3d_actor, self.sagittal_3d_actor,
+                    self.axial_outline_actor, self.coronal_outline_actor, self.sagittal_outline_actor]:
+            if act:
+                act.SetVisibility(False)
+        for btn in [self.axial_3d_btn, self.coronal_3d_btn, self.sagittal_3d_btn]:
+            if btn:
+                btn.blockSignals(True)
+                btn.setChecked(False)
+                btn.blockSignals(False)
+
     def display_subject(self, filepath):
+        if not filepath or not os.path.isfile(filepath):
+            self.clear_views()
+            return
+
+        # Ensure any leftover mask overlay actors are removed
+        if hasattr(self, 'mask_actors') and self.mask_actors:
+            for orientation in self.mask_actors:
+                for actor in orientation.get('actors', []):
+                    if actor:
+                        orientation['viewer'].GetRenderer().RemoveActor(actor)
+            self.mask_actors = []
+
         filename = os.path.basename(filepath)
         ext = filepath.lower()
         

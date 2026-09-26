@@ -1,9 +1,11 @@
 import os
+import glob
+import shutil
 
 class PipelineRunner:
     """
     Coordinates sequential execution of the 4 pipeline stages:
-    1. FastSurfer Hippocampal Segmentation
+    1. FastSurfer Hippocampal Segmentation (using 'data import' repository)
     2. Groupwise ICP Mesh Registration
     3. SPHARM-PDM Surface Parameterization
     4. ResNet Epilepsy Prediction & 3D Grad-CAM
@@ -34,13 +36,58 @@ class PipelineRunner:
 
         self.p.sync_panel_output_folders(out_dir)
 
+        # -------------------------------------------------------------
+        # Continuous Execution: Ensure MRI scans are in 'data import'
+        # -------------------------------------------------------------
+        data_import_dir = None
+        for cand in ["data import", "data_import"]:
+            cand_p = os.path.join(out_dir, cand)
+            if os.path.isdir(cand_p):
+                mris = [f for f in os.listdir(cand_p) if f.lower().endswith((".nii.gz", ".nii", ".mgz", ".nrrd"))]
+                if mris:
+                    data_import_dir = cand_p
+                    break
+
+        if not data_import_dir and in_dir and os.path.isdir(in_dir):
+            target_import = os.path.join(out_dir, "data import")
+            os.makedirs(target_import, exist_ok=True)
+            self.p.signal_log_message.emit(f">>> [MAIN PIPELINE] Preparing 'data import' repository in: {target_import}")
+            
+            raw_mris = []
+            for ext in (".nii.gz", ".nii", ".mgz", ".nrrd"):
+                raw_mris.extend(glob.glob(os.path.join(in_dir, f"*{ext}")))
+                raw_mris.extend(glob.glob(os.path.join(in_dir, "**", f"*{ext}"), recursive=True))
+            
+            skip_kw = ["mask", "seg", "aseg", "aparc", "label", "hippo", ".vtk", ".stl", ".ply"]
+            copied_count = 0
+            for src in raw_mris:
+                fname = os.path.basename(src)
+                if any(kw in fname.lower() for kw in skip_kw):
+                    continue
+                dst = os.path.join(target_import, fname)
+                if not os.path.exists(dst) or os.path.getsize(dst) != os.path.getsize(src):
+                    try:
+                        shutil.copy2(src, dst)
+                        copied_count += 1
+                    except Exception as e:
+                        self.p.signal_log_message.emit(f"  [WARNING] Could not copy {fname}: {e}")
+
+            data_import_dir = target_import
+            self.p.signal_log_message.emit(f">>> [MAIN PIPELINE] Organized {copied_count} MRI scan(s) into 'data import' repository.")
+
+        if data_import_dir:
+            self.p.signal_log_message.emit(f">>> [MAIN PIPELINE] FastSurfer stage will use MRI scans from 'data import': {data_import_dir}")
+            effective_mri_dir = data_import_dir
+        else:
+            effective_mri_dir = in_dir
+
         # Sync directories with ImportPanel
         if self.p.import_panel:
-            if in_dir and os.path.isdir(in_dir):
-                self.p.import_panel.folder_input.setText(in_dir)
-                self.p.import_panel.load_subjects_from_directory(in_dir)
+            if effective_mri_dir and os.path.isdir(effective_mri_dir):
+                self.p.import_panel.folder_input.setText(effective_mri_dir)
+                self.p.import_panel.load_subjects_from_output(out_dir)
             self.p.import_panel.out_folder_input.setText(out_dir)
-            self.p.import_panel.signal_directories_changed.emit(in_dir, out_dir)
+            self.p.import_panel.signal_directories_changed.emit(effective_mri_dir, out_dir)
 
         # Check existing results in output dir (all 4 stages)
         has_fs, has_icp, has_spharm, has_result = self.p.check_existing_stages(out_dir)
@@ -282,9 +329,9 @@ class PipelineRunner:
             self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Completed")
             self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
 
-        in_dir = self.p.folder_input.text().strip()
-        if self.p.import_panel and in_dir:
-            self.p.import_panel.load_subjects_from_directory(in_dir)
+        out_dir = self.p.out_folder_input.text().strip()
+        if self.p.import_panel and out_dir:
+            self.p.import_panel.load_subjects_from_output(out_dir)
         if self.p.fastsurfer_panel:
             self.p.fastsurfer_panel.populate_results_table()
         if self.p.icp_panel:
@@ -293,7 +340,6 @@ class PipelineRunner:
             self.p.spharm_panel.populate_results_table()
         self.p.populate_main_table()
 
-        out_dir = self.p.out_folder_input.text().strip()
         _, _, _, has_result = self.p.check_existing_stages(out_dir)
 
         if has_result:
@@ -339,9 +385,9 @@ class PipelineRunner:
             self.p.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: bold;")
             self.p.signal_log_message.emit(">>> [MAIN PIPELINE] All 4 pipeline stages (FastSurfer, ICP, SPHARM, Result) completed successfully!")
 
-        in_dir = self.p.folder_input.text().strip()
-        if self.p.import_panel and in_dir:
-            self.p.import_panel.load_subjects_from_directory(in_dir)
+        out_dir = self.p.out_folder_input.text().strip()
+        if self.p.import_panel and out_dir:
+            self.p.import_panel.load_subjects_from_output(out_dir)
         if self.p.fastsurfer_panel:
             self.p.fastsurfer_panel.populate_results_table()
         if self.p.icp_panel:

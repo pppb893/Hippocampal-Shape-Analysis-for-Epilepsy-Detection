@@ -482,9 +482,16 @@ class EvaluationManager:
         self.p.results_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
 
         if self.p.results_table.rowCount() > 0:
-            self.p.results_table.selectRow(0)
+            if self.p.isVisible():
+                self.p.results_table.selectRow(0)
+            else:
+                self.p.results_table.blockSignals(True)
+                self.p.results_table.selectRow(0)
+                self.p.results_table.blockSignals(False)
 
     def on_result_selected(self):
+        if not self.p.isVisible():
+            return
         selected = self.p.results_table.selectedItems()
         if not selected:
             return

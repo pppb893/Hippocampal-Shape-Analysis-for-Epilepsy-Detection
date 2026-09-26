@@ -462,15 +462,25 @@ class MainWindow(QMainWindow):
 
             if module_name in ("ICP Registration", "SPHARM Processing", "Result Panel", "Main Panel"):
                 self.right_panel.set_view_mode("full_3d", module_name)
+                self.right_panel.viewer.set_3d_plane_buttons_visible(False)
+                if hasattr(self.right_panel.viewer, 'slice_mgr'):
+                    self.right_panel.viewer.slice_mgr.hide_3d_planes(uncheck_buttons=True)
             elif module_name == "FastSurfer Segmentation":
                 self.right_panel.set_view_mode("quad", module_name)
                 self.right_panel.viewer.set_mesh_view_visible(True)
+                self.right_panel.viewer.set_3d_plane_buttons_visible(True)
             elif module_name == "Data Importer":
                 self.right_panel.viewer.set_mesh_view_visible(False)
                 self.right_panel.set_view_mode("quad", module_name)
+                self.right_panel.viewer.set_3d_plane_buttons_visible(False)
+                if hasattr(self.right_panel.viewer, 'slice_mgr'):
+                    self.right_panel.viewer.slice_mgr.hide_3d_planes(uncheck_buttons=True)
             else:
                 self.right_panel.viewer.set_mesh_view_visible(False)
                 self.right_panel.set_view_mode("quad", module_name)
+                self.right_panel.viewer.set_3d_plane_buttons_visible(False)
+                if hasattr(self.right_panel.viewer, 'slice_mgr'):
+                    self.right_panel.viewer.slice_mgr.hide_3d_planes(uncheck_buttons=True)
 
         if module_name != "Result Panel":
             if hasattr(self.right_panel, 'clear_gradcam_view'):
