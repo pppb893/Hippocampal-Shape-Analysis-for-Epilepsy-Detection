@@ -45,7 +45,7 @@ def check_existing_stages(output_dir):
     fs_dir = os.path.join(output_dir, "fastsurfer")
     fs_files = []
     if os.path.isdir(fs_dir):
-        for ext in ("*.nii*", "*.vtk"):
+        for ext in ("*.nii*", "*.vtk", "*.mgz"):
             fs_files.extend(glob.glob(os.path.join(fs_dir, ext)))
             fs_files.extend(glob.glob(os.path.join(fs_dir, "**", ext), recursive=True))
     has_fastsurfer = len(fs_files) > 0

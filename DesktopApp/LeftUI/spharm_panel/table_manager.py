@@ -15,9 +15,20 @@ class SPHARMTableManager:
 
     def populate_results_table(self):
         target_base = self.p.spharm_dir_input.text().strip()
-        if not target_base:
-            _, _, default_spharm_out, _ = self.p.get_source_paths()
-            target_base = default_spharm_out
+        if not target_base or not os.path.isdir(target_base):
+            if hasattr(self.p, 'get_default_output_dir'):
+                def_out = self.p.get_default_output_dir()
+                if def_out and os.path.isdir(def_out):
+                    target_base = def_out
+                    self.p.spharm_dir_input.setText(target_base)
+
+        if (not target_base or not os.path.isdir(target_base)) and self.p.get_output_folder:
+            out_base = self.p.get_output_folder().strip()
+            if out_base and os.path.isdir(out_base):
+                cand = os.path.join(out_base, "output_SPHARM")
+                if os.path.isdir(cand):
+                    target_base = cand
+                    self.p.spharm_dir_input.setText(cand)
 
         self.all_files = []
         if target_base and os.path.isdir(target_base):

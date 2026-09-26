@@ -107,6 +107,9 @@ class LeftPanel(QWidget):
                 res_d = os.path.join(out_d, "output_Result")
                 self.result_panel.spharm_dir_input.setText(sph_d)
                 self.result_panel.result_dir_input.setText(res_d)
+            if hasattr(self.result_panel, 'update_run_button_state'):
+                self.result_panel.update_run_button_state()
+            elif hasattr(self.result_panel, 'on_spharm_dir_changed'):
                 self.result_panel.on_spharm_dir_changed()
         self.spharm_panel.signal_spharm_completed.connect(on_spharm_finished)
 
@@ -115,6 +118,8 @@ class LeftPanel(QWidget):
             self.main_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         if hasattr(self.main_panel, 'signal_diagnostic_info'):
             self.main_panel.signal_diagnostic_info.connect(self.signal_diagnostic_info)
+        if hasattr(self.main_panel, 'signal_jump_to_module'):
+            self.main_panel.signal_jump_to_module.connect(self.on_jump_to_module)
         self.fastsurfer_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.icp_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
         self.spharm_panel.signal_mesh_selected.connect(self.signal_mesh_selected)
@@ -198,10 +203,10 @@ class LeftPanel(QWidget):
             self.result_panel.spharm_dir_input.setText(os.path.join(out_dir, "output_SPHARM"))
         if hasattr(self.result_panel, 'result_dir_input'):
             self.result_panel.result_dir_input.setText(os.path.join(out_dir, "output_Result"))
-        if hasattr(self.result_panel, 'load_existing_results'):
+        if hasattr(self.result_panel, 'update_run_button_state'):
+            self.result_panel.update_run_button_state()
+        elif hasattr(self.result_panel, 'load_existing_results'):
             self.result_panel.load_existing_results()
-        if hasattr(self.result_panel, 'on_spharm_dir_changed'):
-            self.result_panel.on_spharm_dir_changed()
 
         # Ensure active panel maintains correct viewport mode
         cur_panel = self.get_current_module_panel()
@@ -215,6 +220,22 @@ class LeftPanel(QWidget):
                     win.right_panel.clear_gradcam_view(render_now=False)
             if hasattr(self.import_panel, 'display_selected_subject'):
                 self.import_panel.display_selected_subject()
+
+    def on_jump_to_module(self, module_name: str):
+        win = self.window()
+        if win and hasattr(win, 'module_combo'):
+            win.module_combo.setCurrentText(module_name)
+        else:
+            name_to_idx = {
+                "Main Panel": 0,
+                "Data Importer": 1,
+                "FastSurfer Segmentation": 2,
+                "ICP Registration": 3,
+                "SPHARM Processing": 4,
+                "Result Panel": 5
+            }
+            if module_name in name_to_idx:
+                self.switch_module(name_to_idx[module_name])
 
     def get_current_module_panel(self):
         return self.stacked_widget.currentWidget()
@@ -266,7 +287,9 @@ class LeftPanel(QWidget):
                 if hasattr(self.result_panel, 'result_dir_input'):
                     if not self.result_panel.result_dir_input.text().strip():
                         self.result_panel.result_dir_input.setText(res_dir)
-            if hasattr(self.result_panel, 'on_panel_activated'):
+            if hasattr(self.result_panel, 'update_run_button_state'):
+                self.result_panel.update_run_button_state()
+            elif hasattr(self.result_panel, 'on_panel_activated'):
                 self.result_panel.on_panel_activated()
         self.stacked_widget.updateGeometry()
         self.updateGeometry()

@@ -91,6 +91,11 @@ class PipelineRunner:
 
         # Check existing results in output dir (all 4 stages)
         has_fs, has_icp, has_spharm, has_result = self.p.check_existing_stages(out_dir)
+        force_rerun = hasattr(self.p, 'force_rerun_cb') and self.p.force_rerun_cb.isChecked()
+
+        if force_rerun:
+            has_fs = has_icp = has_spharm = has_result = False
+            self.p.signal_log_message.emit(">>> [MAIN PIPELINE] Force Re-run enabled: Overwriting existing results, starting all stages from scratch...")
 
         if has_fs and has_icp and has_spharm and has_result:
             self.p.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Found existing results (Skipped)")
@@ -206,48 +211,50 @@ class PipelineRunner:
 
         out_dir = self.p.out_folder_input.text().strip()
         _, has_icp, has_spharm, has_result = self.p.check_existing_stages(out_dir)
+        force_rerun = hasattr(self.p, 'force_rerun_cb') and self.p.force_rerun_cb.isChecked()
 
-        if has_icp and has_spharm and has_result:
-            self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
-            self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
-            self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.p.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
-            self.p.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            if self.p.icp_panel:
-                self.p.icp_panel.populate_results_table()
-            if self.p.spharm_panel:
-                self.p.spharm_panel.populate_results_table()
-            if self.p.result_panel and hasattr(self.p.result_panel, 'load_existing_results'):
-                self.p.result_panel.load_existing_results()
-            self.on_result_finished_step(True)
-            return
-        elif has_icp and has_spharm and not has_result:
-            self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
-            self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
-            self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            if self.p.icp_panel:
-                self.p.icp_panel.populate_results_table()
-            if self.p.spharm_panel:
-                self.p.spharm_panel.populate_results_table()
-            self.run_result_step(out_dir)
-            return
-        elif has_icp and not has_spharm:
-            self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
-            self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            if self.p.icp_panel:
-                self.p.icp_panel.populate_results_table()
-            self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
-            self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
-            self.p.status_lbl.setText("Step 3/4: Running SPHARM-PDM Processing (ICP skipped, results exist)...")
-            self.p.signal_log_message.emit(">>> [MAIN PIPELINE] ICP results already exist. Starting SPHARM-PDM Processing...")
-            if self.p.spharm_panel:
-                self.p.spharm_panel.update_run_button_state()
-                self.p.spharm_panel.run_spharm_process()
-            else:
-                self.reset_run_state()
-            return
+        if not force_rerun:
+            if has_icp and has_spharm and has_result:
+                self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
+                self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
+                self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                self.p.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
+                self.p.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                if self.p.icp_panel:
+                    self.p.icp_panel.populate_results_table()
+                if self.p.spharm_panel:
+                    self.p.spharm_panel.populate_results_table()
+                if self.p.result_panel and hasattr(self.p.result_panel, 'load_existing_results'):
+                    self.p.result_panel.load_existing_results()
+                self.on_result_finished_step(True)
+                return
+            elif has_icp and has_spharm and not has_result:
+                self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
+                self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
+                self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                if self.p.icp_panel:
+                    self.p.icp_panel.populate_results_table()
+                if self.p.spharm_panel:
+                    self.p.spharm_panel.populate_results_table()
+                self.run_result_step(out_dir)
+                return
+            elif has_icp and not has_spharm:
+                self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Found existing results (Skipped)")
+                self.p.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                if self.p.icp_panel:
+                    self.p.icp_panel.populate_results_table()
+                self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
+                self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
+                self.p.status_lbl.setText("Step 3/4: Running SPHARM-PDM Processing (ICP skipped, results exist)...")
+                self.p.signal_log_message.emit(">>> [MAIN PIPELINE] ICP results already exist. Starting SPHARM-PDM Processing...")
+                if self.p.spharm_panel:
+                    self.p.spharm_panel.update_run_button_state()
+                    self.p.spharm_panel.run_spharm_process()
+                else:
+                    self.reset_run_state()
+                return
 
         # Step 2: ICP Registration
         self.p.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         In Progress...")
@@ -283,25 +290,27 @@ class PipelineRunner:
 
         out_dir = self.p.out_folder_input.text().strip()
         _, _, has_spharm, has_result = self.p.check_existing_stages(out_dir)
+        force_rerun = hasattr(self.p, 'force_rerun_cb') and self.p.force_rerun_cb.isChecked()
 
-        if has_spharm and has_result:
-            self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
-            self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            self.p.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
-            self.p.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            if self.p.spharm_panel:
-                self.p.spharm_panel.populate_results_table()
-            if self.p.result_panel and hasattr(self.p.result_panel, 'load_existing_results'):
-                self.p.result_panel.load_existing_results()
-            self.on_result_finished_step(True)
-            return
-        elif has_spharm and not has_result:
-            self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
-            self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-            if self.p.spharm_panel:
-                self.p.spharm_panel.populate_results_table()
-            self.run_result_step(out_dir)
-            return
+        if not force_rerun:
+            if has_spharm and has_result:
+                self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
+                self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                self.p.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
+                self.p.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                if self.p.spharm_panel:
+                    self.p.spharm_panel.populate_results_table()
+                if self.p.result_panel and hasattr(self.p.result_panel, 'load_existing_results'):
+                    self.p.result_panel.load_existing_results()
+                self.on_result_finished_step(True)
+                return
+            elif has_spharm and not has_result:
+                self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Found existing results (Skipped)")
+                self.p.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+                if self.p.spharm_panel:
+                    self.p.spharm_panel.populate_results_table()
+                self.run_result_step(out_dir)
+                return
 
         # Step 3: SPHARM Processing
         self.p.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            In Progress...")
@@ -341,8 +350,9 @@ class PipelineRunner:
         self.p.populate_main_table()
 
         _, _, _, has_result = self.p.check_existing_stages(out_dir)
+        force_rerun = hasattr(self.p, 'force_rerun_cb') and self.p.force_rerun_cb.isChecked()
 
-        if has_result:
+        if not force_rerun and has_result:
             self.p.stage4_lbl.setText("  4. ResNet Epilepsy Prediction & 3D Grad-CAM: Found existing results (Skipped)")
             self.p.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
             if self.p.result_panel and hasattr(self.p.result_panel, 'load_existing_results'):
@@ -403,4 +413,4 @@ class PipelineRunner:
     def reset_run_state(self):
         self.p.is_running = False
         self.p.run_btn.setEnabled(True)
-        self.p.run_btn.setText("Run Full Pipeline (FastSurfer -> ICP -> SPHARM -> Result)")
+        self.p.run_btn.setText("Run Full Pipeline")

@@ -62,9 +62,15 @@ class SpharmPanel(QWidget):
         help_label.setStyleSheet("color: #555; font-size: 11px;")
         spharm_layout.addWidget(help_label)
 
-        # 1. Directory Configuration (Mesh / ICP Import & Dedicated output_SPHARM)
-        dir_group = QGroupBox("Directory Configuration (Mesh Import & Output)")
-        dir_group.setStyleSheet("""
+        # Internal directory inputs for pipeline & left_panel integration
+        self.mesh_input_dir = QLineEdit()
+        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
+        self.spharm_dir_input = QLineEdit()
+        self.spharm_dir_input.textChanged.connect(self.populate_results_table)
+
+        # 1. Side Selection
+        side_group = QGroupBox("Side Execution Option")
+        side_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
@@ -80,80 +86,6 @@ class SpharmPanel(QWidget):
                 font-size: 12px;
             }
         """)
-        dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(10, 16, 10, 10)
-        dir_layout.setSpacing(6)
-
-        btn_style = """
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 8px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-        """
-
-        # Row A: Input ICP Aligned Meshes
-        in_lbl = QLabel("Input ICP Aligned Meshes (output_ICP or Custom ICP Folder):")
-        in_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
-        dir_layout.addWidget(in_lbl)
-
-        in_row = QHBoxLayout()
-        self.mesh_input_dir = QLineEdit()
-        self.mesh_input_dir.setPlaceholderText("Auto (.../output_ICP from pipeline) or Browse to import ICP folder...")
-        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
-        in_row.addWidget(self.mesh_input_dir)
-
-        browse_in_btn = QPushButton("Browse...")
-        browse_in_btn.setToolTip("Import existing ICP output folder from disk (must contain aligned meshes)")
-        browse_in_btn.setStyleSheet(btn_style)
-        browse_in_btn.clicked.connect(self.browse_input_directory)
-        in_row.addWidget(browse_in_btn)
-
-        reset_in_btn = QPushButton("Pipeline")
-        reset_in_btn.setToolTip("Reset input back to current pipeline output_ICP")
-        reset_in_btn.setStyleSheet(btn_style)
-        reset_in_btn.clicked.connect(self.reset_to_pipeline_input)
-        in_row.addWidget(reset_in_btn)
-        dir_layout.addLayout(in_row)
-
-        # Row B: Output Directory
-        out_lbl = QLabel("Output Directory (Dedicated output_SPHARM):")
-        out_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50; margin-top: 4px;")
-        dir_layout.addWidget(out_lbl)
-
-        out_row = QHBoxLayout()
-        self.spharm_dir_input = QLineEdit()
-        self.spharm_dir_input.setPlaceholderText("Auto (.../output_SPHARM)")
-        self.spharm_dir_input.textChanged.connect(self.populate_results_table)
-        out_row.addWidget(self.spharm_dir_input)
-
-        browse_out_btn = QPushButton("Browse...")
-        browse_out_btn.setToolTip("Select custom destination for output_SPHARM")
-        browse_out_btn.setStyleSheet(btn_style)
-        browse_out_btn.clicked.connect(self.browse_output_directory)
-        out_row.addWidget(browse_out_btn)
-
-        reload_btn = QPushButton("Reload")
-        reload_btn.setToolTip("Scan output_SPHARM folder and reload results table")
-        reload_btn.setStyleSheet(btn_style)
-        reload_btn.clicked.connect(self.populate_results_table)
-        out_row.addWidget(reload_btn)
-
-        dir_layout.addLayout(out_row)
-        spharm_layout.addWidget(dir_group)
-
-        # 2. Side Selection
-        side_group = QGroupBox("Side Execution Option")
-        side_group.setStyleSheet(dir_group.styleSheet())
         side_layout = QHBoxLayout(side_group)
         side_layout.setContentsMargins(10, 15, 10, 10)
 
@@ -203,6 +135,9 @@ class SpharmPanel(QWidget):
         spharm_layout.addWidget(self.run_spharm_btn)
 
         self.spharm_status_hint = QLabel("")
+        self.spharm_status_hint.setWordWrap(True)
+        self.spharm_status_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spharm_layout.addWidget(self.spharm_status_hint)
 
         # 4. Modular Collapsible Advanced Parameters
         spharm_layout.addWidget(self.adv_widget)
@@ -399,6 +334,14 @@ class SpharmPanel(QWidget):
             self.populate_results_table()
             self.update_run_button_state()
 
+    def _has_spharm_inputs(self, folder):
+        if not folder or not os.path.isdir(folder):
+            return False
+        for p in ["*.nii*", "*.vtk", "*.stl", "*.mgz"]:
+            if glob.glob(os.path.join(folder, p)) or glob.glob(os.path.join(folder, "**", p), recursive=True):
+                return True
+        return False
+
     def resolve_input_folders(self):
         custom_input = self.mesh_input_dir.text().strip()
         candidates = []
@@ -417,14 +360,17 @@ class SpharmPanel(QWidget):
 
             lh_cand = os.path.join(base, "left", "aligned_nifti")
             rh_cand = os.path.join(base, "right", "aligned_nifti")
-            if (os.path.isdir(lh_cand) and glob.glob(os.path.join(lh_cand, "*.nii*"))) or \
-               (os.path.isdir(rh_cand) and glob.glob(os.path.join(rh_cand, "*.nii*"))):
+            if self._has_spharm_inputs(lh_cand) or self._has_spharm_inputs(rh_cand):
                 return lh_cand, rh_cand, base, src_label
+
+            lh_cand_m = os.path.join(base, "left", "aligned_meshes")
+            rh_cand_m = os.path.join(base, "right", "aligned_meshes")
+            if self._has_spharm_inputs(lh_cand_m) or self._has_spharm_inputs(rh_cand_m):
+                return lh_cand_m, rh_cand_m, base, src_label
 
             lh_cand2 = os.path.join(base, "left")
             rh_cand2 = os.path.join(base, "right")
-            if (os.path.isdir(lh_cand2) and glob.glob(os.path.join(lh_cand2, "*.nii*"))) or \
-               (os.path.isdir(rh_cand2) and glob.glob(os.path.join(rh_cand2, "*.nii*"))):
+            if self._has_spharm_inputs(lh_cand2) or self._has_spharm_inputs(rh_cand2):
                 return lh_cand2, rh_cand2, base, src_label
 
             base_name = os.path.basename(base.rstrip(r'\/')).lower()
@@ -491,24 +437,30 @@ class SpharmPanel(QWidget):
     def update_run_button_state(self):
         lh_dir, rh_dir, resolved_base, src_label = self.resolve_input_folders()
 
-        has_lh = bool(lh_dir and os.path.isdir(lh_dir) and glob.glob(os.path.join(lh_dir, "*.nii*")))
-        has_rh = bool(rh_dir and os.path.isdir(rh_dir) and glob.glob(os.path.join(rh_dir, "*.nii*")))
+        has_lh = bool(lh_dir and self._has_spharm_inputs(lh_dir))
+        has_rh = bool(rh_dir and self._has_spharm_inputs(rh_dir))
 
         default_out = self.get_default_output_dir(resolved_base)
         custom_dir = self.spharm_dir_input.text().strip()
         if not custom_dir and default_out:
             self.spharm_dir_input.setText(default_out)
 
-        target_out = custom_dir if custom_dir else default_out
+        self.populate_results_table()
 
         if not has_lh and not has_rh:
             self.run_spharm_btn.setEnabled(False)
             self.run_spharm_btn.setToolTip("Cannot run SPHARM: No ICP-aligned meshes found.")
+            self.spharm_status_hint.setText("⚠️ ICP output not found. Please run ICP registration first.")
+            self.spharm_status_hint.setStyleSheet("color: #e67e22; font-size: 11px;")
         else:
             self.run_spharm_btn.setEnabled(True)
             self.run_spharm_btn.setToolTip("Click to run Batch SPHARM-PDM Pipeline")
-
-        self.populate_results_table()
+            if len(self.all_files) > 0:
+                self.spharm_status_hint.setText(f"✓ SPHARM results loaded ({len(self.all_files)} meshes). Ready to view or re-run.")
+                self.spharm_status_hint.setStyleSheet("color: #27ae60; font-size: 11px;")
+            else:
+                self.spharm_status_hint.setText("✓ ICP output detected. Ready to run SPHARM-PDM pipeline.")
+                self.spharm_status_hint.setStyleSheet("color: #2980b9; font-size: 11px;")
 
     def run_spharm_process(self):
         lh_dir, rh_dir, resolved_base, _ = self.resolve_input_folders()

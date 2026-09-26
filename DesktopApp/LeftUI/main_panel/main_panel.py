@@ -5,7 +5,7 @@ import json
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, 
-    QLineEdit, QGroupBox, QMenu, QTabBar
+    QLineEdit, QGroupBox, QMenu, QTabBar, QCheckBox
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QPoint
 from PyQt6.QtGui import QColor, QFont
@@ -21,6 +21,7 @@ class MainPanel(QWidget):
     signal_log_message = pyqtSignal(str)
     signal_mesh_selected = pyqtSignal(object, str)
     signal_diagnostic_info = pyqtSignal(str)
+    signal_jump_to_module = pyqtSignal(str)
 
     find_valid_mri_files = staticmethod(find_valid_mri_files)
     check_existing_stages = staticmethod(check_existing_stages)
@@ -269,27 +270,105 @@ class MainPanel(QWidget):
         wg_layout.setContentsMargins(10, 16, 10, 10)
         wg_layout.setSpacing(8)
 
-        # Progress Stages Display
+        # Progress Stages Display with Quick Jump buttons
         stages_layout = QVBoxLayout()
-        stages_layout.setSpacing(4)
+        stages_layout.setSpacing(5)
 
+        jump_btn_style = """
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #f1f2f6);
+                color: #2c3e50;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 3px 9px;
+                border: 1px solid #ced6e0;
+                border-radius: 4px;
+                min-width: 52px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3498db, stop:1 #2980b9);
+                color: white;
+                border: 1px solid #2471a3;
+            }
+            QPushButton:pressed {
+                background: #2471a3;
+                color: white;
+            }
+        """
+
+        # Stage 1 Row: FastSurfer
+        s1_row = QHBoxLayout()
+        s1_row.setSpacing(6)
         self.stage1_lbl = QLabel("  1. FastSurfer Hippocampal Segmentation:  Pending")
         self.stage1_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        stages_layout.addWidget(self.stage1_lbl)
+        self.stage1_jump_btn = QPushButton("Open →")
+        self.stage1_jump_btn.setToolTip("Switch to FastSurfer Segmentation Panel")
+        self.stage1_jump_btn.setStyleSheet(jump_btn_style)
+        self.stage1_jump_btn.clicked.connect(lambda: self.jump_to_panel("FastSurfer Segmentation"))
+        s1_row.addWidget(self.stage1_lbl, stretch=1)
+        s1_row.addWidget(self.stage1_jump_btn)
+        stages_layout.addLayout(s1_row)
 
+        # Stage 2 Row: ICP
+        s2_row = QHBoxLayout()
+        s2_row.setSpacing(6)
         self.stage2_lbl = QLabel("  2. Groupwise ICP Mesh Registration:         Pending")
         self.stage2_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        stages_layout.addWidget(self.stage2_lbl)
+        self.stage2_jump_btn = QPushButton("Open →")
+        self.stage2_jump_btn.setToolTip("Switch to ICP Registration Panel")
+        self.stage2_jump_btn.setStyleSheet(jump_btn_style)
+        self.stage2_jump_btn.clicked.connect(lambda: self.jump_to_panel("ICP Registration"))
+        s2_row.addWidget(self.stage2_lbl, stretch=1)
+        s2_row.addWidget(self.stage2_jump_btn)
+        stages_layout.addLayout(s2_row)
 
+        # Stage 3 Row: SPHARM
+        s3_row = QHBoxLayout()
+        s3_row.setSpacing(6)
         self.stage3_lbl = QLabel("  3. SPHARM-PDM Shape Analysis:            Pending")
         self.stage3_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        stages_layout.addWidget(self.stage3_lbl)
+        self.stage3_jump_btn = QPushButton("Open →")
+        self.stage3_jump_btn.setToolTip("Switch to SPHARM Processing Panel")
+        self.stage3_jump_btn.setStyleSheet(jump_btn_style)
+        self.stage3_jump_btn.clicked.connect(lambda: self.jump_to_panel("SPHARM Processing"))
+        s3_row.addWidget(self.stage3_lbl, stretch=1)
+        s3_row.addWidget(self.stage3_jump_btn)
+        stages_layout.addLayout(s3_row)
 
+        # Stage 4 Row: Prediction
+        s4_row = QHBoxLayout()
+        s4_row.setSpacing(6)
         self.stage4_lbl = QLabel("  4. Prediction & 3D Grad-CAM: Pending")
         self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
-        stages_layout.addWidget(self.stage4_lbl)
+        self.stage4_jump_btn = QPushButton("Open →")
+        self.stage4_jump_btn.setToolTip("Switch to Result Panel")
+        self.stage4_jump_btn.setStyleSheet(jump_btn_style)
+        self.stage4_jump_btn.clicked.connect(lambda: self.jump_to_panel("Result Panel"))
+        s4_row.addWidget(self.stage4_lbl, stretch=1)
+        s4_row.addWidget(self.stage4_jump_btn)
+        stages_layout.addLayout(s4_row)
 
         wg_layout.addLayout(stages_layout)
+
+        # Force Re-run Checkbox
+        self.force_rerun_cb = QCheckBox("Force Re-run all stages (Overwrite existing results)")
+        self.force_rerun_cb.setToolTip("When checked, the pipeline will re-execute all stages from scratch even if previous results exist in output directory.")
+        self.force_rerun_cb.setStyleSheet("""
+            QCheckBox {
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11px;
+                spacing: 6px;
+                margin-top: 4px;
+                margin-bottom: 2px;
+            }
+            QCheckBox::indicator:checked {
+                background: #e74c3c;
+                border: 1px solid #c0392b;
+            }
+        """)
+        self.force_rerun_cb.toggled.connect(lambda: self.update_stage_preview())
+        wg_layout.addWidget(self.force_rerun_cb)
 
         # Status notification label (hidden from UI)
         self.status_lbl = QLabel("")
@@ -380,6 +459,29 @@ class MainPanel(QWidget):
             if os.path.isdir(res_dir) and hasattr(self.result_panel, 'load_existing_results'):
                 self.result_panel.load_existing_results()
 
+    def jump_to_panel(self, module_name: str):
+        self.signal_jump_to_module.emit(module_name)
+        win = self.window()
+        if win and hasattr(win, 'module_combo'):
+            win.module_combo.setCurrentText(module_name)
+            return
+
+        parent = self.parent()
+        while parent:
+            if hasattr(parent, 'switch_module'):
+                name_to_idx = {
+                    "Main Panel": 0,
+                    "Data Importer": 1,
+                    "FastSurfer Segmentation": 2,
+                    "ICP Registration": 3,
+                    "SPHARM Processing": 4,
+                    "Result Panel": 5
+                }
+                if module_name in name_to_idx:
+                    parent.switch_module(name_to_idx[module_name])
+                    return
+            parent = parent.parent()
+
     def update_stage_preview(self):
         """Checks output directory and previews which stages exist and which will be run."""
         out_dir = self.out_folder_input.text().strip()
@@ -397,21 +499,26 @@ class MainPanel(QWidget):
             return
 
         has_fs, has_icp, has_spharm, has_result = self.check_existing_stages(out_dir)
+        force_rerun = hasattr(self, 'force_rerun_cb') and self.force_rerun_cb.isChecked()
 
         # Stage 1 label
         if has_fs:
-            self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Results exist (Will skip)")
-            self.stage1_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
+            action = "(Will overwrite)" if force_rerun else "(Will skip)"
+            color = "#d35400" if force_rerun else "#27ae60"
+            self.stage1_lbl.setText(f"  1. FastSurfer Hippocampal Segmentation:  Results exist {action}")
+            self.stage1_lbl.setStyleSheet(f"font-size: 11px; color: {color}; font-weight: bold;")
         else:
             self.stage1_lbl.setText("  1. FastSurfer Hippocampal Segmentation:  Missing (Will run first)")
             self.stage1_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
 
         # Stage 2 label
         if has_icp:
-            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Results exist (Will skip)")
-            self.stage2_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-        elif has_fs:
-            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Missing (Will run next)")
+            action = "(Will overwrite)" if force_rerun else "(Will skip)"
+            color = "#d35400" if force_rerun else "#27ae60"
+            self.stage2_lbl.setText(f"  2. Groupwise ICP Mesh Registration:         Results exist {action}")
+            self.stage2_lbl.setStyleSheet(f"font-size: 11px; color: {color}; font-weight: bold;")
+        elif has_fs or force_rerun:
+            self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Will run after Stage 1")
             self.stage2_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
             self.stage2_lbl.setText("  2. Groupwise ICP Mesh Registration:         Pending")
@@ -419,10 +526,12 @@ class MainPanel(QWidget):
 
         # Stage 3 label
         if has_spharm:
-            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Results exist (Will skip)")
-            self.stage3_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-        elif has_fs and has_icp:
-            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Missing (Will run next)")
+            action = "(Will overwrite)" if force_rerun else "(Will skip)"
+            color = "#d35400" if force_rerun else "#27ae60"
+            self.stage3_lbl.setText(f"  3. SPHARM-PDM Shape Analysis:            Results exist {action}")
+            self.stage3_lbl.setStyleSheet(f"font-size: 11px; color: {color}; font-weight: bold;")
+        elif (has_fs and has_icp) or force_rerun:
+            self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Will run after Stage 2")
             self.stage3_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
             self.stage3_lbl.setText("  3. SPHARM-PDM Shape Analysis:            Pending")
@@ -430,17 +539,22 @@ class MainPanel(QWidget):
 
         # Stage 4 label
         if has_result:
-            self.stage4_lbl.setText("  4.Prediction & 3D Grad-CAM: Results exist (Will skip)")
-            self.stage4_lbl.setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;")
-        elif has_fs and has_icp and has_spharm:
-            self.stage4_lbl.setText("  4. Prediction & 3D Grad-CAM: Missing (Will run next)")
+            action = "(Will overwrite)" if force_rerun else "(Will skip)"
+            color = "#d35400" if force_rerun else "#27ae60"
+            self.stage4_lbl.setText(f"  4. Prediction & 3D Grad-CAM: Results exist {action}")
+            self.stage4_lbl.setStyleSheet(f"font-size: 11px; color: {color}; font-weight: bold;")
+        elif (has_fs and has_icp and has_spharm) or force_rerun:
+            self.stage4_lbl.setText("  4. Prediction & 3D Grad-CAM: Will run after Stage 3")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #2980b9; font-weight: bold;")
         else:
-            self.stage4_lbl.setText("  4. Epilepsy Prediction & 3D Grad-CAM: Pending")
+            self.stage4_lbl.setText("  4. Prediction & 3D Grad-CAM: Pending")
             self.stage4_lbl.setStyleSheet("font-size: 11px; color: #57606f;")
 
         # Status text summary
-        if has_fs and has_icp and has_spharm and has_result:
+        if force_rerun:
+            self.status_lbl.setText("Force Re-run enabled: Running will re-compute all 4 pipeline stages from scratch.")
+            self.status_lbl.setStyleSheet("color: #c0392b; background-color: #fdedec; border: 1px solid #f5b7b1; padding: 6px 8px; border-radius: 4px; font-weight: bold;")
+        elif has_fs and has_icp and has_spharm and has_result:
             self.status_lbl.setText("Complete results exist in output folder. Running will refresh all tables without re-computing.")
             self.status_lbl.setStyleSheet("color: #1e8449; background-color: #eafaf1; border: 1px solid #a9dfbf; padding: 6px 8px; border-radius: 4px; font-weight: 500;")
         elif has_fs and has_icp and has_spharm and not has_result:

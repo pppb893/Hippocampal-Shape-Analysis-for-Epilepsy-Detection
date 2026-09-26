@@ -62,9 +62,15 @@ class IcpPanel(QWidget):
         help_label.setStyleSheet("color: #555; font-size: 11px;")
         icp_layout.addWidget(help_label)
 
-        # 1. Directory Configuration (Import Meshes & Dedicated output_ICP)
-        dir_group = QGroupBox("Directory Configuration (Mesh Import & Output)")
-        dir_group.setStyleSheet("""
+        # Internal directory inputs for pipeline & left_panel integration
+        self.mesh_input_dir = QLineEdit()
+        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
+        self.icp_dir_input = QLineEdit()
+        self.icp_dir_input.textChanged.connect(self.populate_results_table)
+
+        # 1. Side Selection
+        side_group = QGroupBox("Side Execution Option")
+        side_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
                 border-radius: 6px;
@@ -80,80 +86,6 @@ class IcpPanel(QWidget):
                 font-size: 12px;
             }
         """)
-        dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(10, 16, 10, 10)
-        dir_layout.setSpacing(6)
-
-        # Row A: Input Meshes
-        in_lbl = QLabel("Input Meshes (FastSurfer / Custom Mesh Folder):")
-        in_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50;")
-        dir_layout.addWidget(in_lbl)
-
-        btn_style = """
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 8px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-        """
-
-        in_row = QHBoxLayout()
-        self.mesh_input_dir = QLineEdit()
-        self.mesh_input_dir.setPlaceholderText("Auto (FastSurfer output) or Browse to import meshes...")
-        self.mesh_input_dir.textChanged.connect(self.on_input_dir_changed)
-        in_row.addWidget(self.mesh_input_dir)
-
-        browse_in_btn = QPushButton("Browse...")
-        browse_in_btn.setToolTip("Import existing FastSurfer mesh folder from disk (skip previous steps)")
-        browse_in_btn.setStyleSheet(btn_style)
-        browse_in_btn.clicked.connect(self.browse_input_directory)
-        in_row.addWidget(browse_in_btn)
-
-        reset_in_btn = QPushButton("Pipeline")
-        reset_in_btn.setToolTip("Reset input back to current Data Importer / FastSurfer pipeline output")
-        reset_in_btn.setStyleSheet(btn_style)
-        reset_in_btn.clicked.connect(self.reset_to_pipeline_input)
-        in_row.addWidget(reset_in_btn)
-        dir_layout.addLayout(in_row)
-
-        # Row B: Output Directory
-        out_lbl = QLabel("Output Directory (Dedicated output_ICP):")
-        out_lbl.setStyleSheet("font-weight: bold; font-size: 11px; color: #2c3e50; margin-top: 4px;")
-        dir_layout.addWidget(out_lbl)
-
-        out_row = QHBoxLayout()
-        self.icp_dir_input = QLineEdit()
-        self.icp_dir_input.setPlaceholderText("Auto (.../output_ICP)")
-        self.icp_dir_input.textChanged.connect(self.populate_results_table)
-        out_row.addWidget(self.icp_dir_input)
-
-        browse_out_btn = QPushButton("Browse...")
-        browse_out_btn.setToolTip("Select custom destination for output_ICP")
-        browse_out_btn.setStyleSheet(btn_style)
-        browse_out_btn.clicked.connect(self.browse_output_directory)
-        out_row.addWidget(browse_out_btn)
-
-        reload_btn = QPushButton("Reload")
-        reload_btn.setToolTip("Scan output_ICP folder and reload results table")
-        reload_btn.setStyleSheet(btn_style)
-        reload_btn.clicked.connect(self.populate_results_table)
-        out_row.addWidget(reload_btn)
-
-        dir_layout.addLayout(out_row)
-        icp_layout.addWidget(dir_group)
-
-        # 2. Side Selection
-        side_group = QGroupBox("Side Execution Option")
-        side_group.setStyleSheet(dir_group.styleSheet())
         side_layout = QHBoxLayout(side_group)
         side_layout.setContentsMargins(10, 15, 10, 10)
 
@@ -203,6 +135,9 @@ class IcpPanel(QWidget):
         icp_layout.addWidget(self.run_icp_btn)
 
         self.icp_status_hint = QLabel("")
+        self.icp_status_hint.setWordWrap(True)
+        self.icp_status_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icp_layout.addWidget(self.icp_status_hint)
 
         # 4. Modular Collapsible Advanced Parameters
         icp_layout.addWidget(self.adv_widget)
@@ -399,6 +334,14 @@ class IcpPanel(QWidget):
             self.populate_results_table()
             self.update_run_button_state()
 
+    def _has_meshes_or_nii(self, folder):
+        if not folder or not os.path.isdir(folder):
+            return False
+        for p in ["*.nii*", "*.vtk", "*.stl", "*.mgz"]:
+            if glob.glob(os.path.join(folder, p)):
+                return True
+        return False
+
     def resolve_input_folders(self):
         custom_input = self.mesh_input_dir.text().strip()
         candidates = []
@@ -408,46 +351,48 @@ class IcpPanel(QWidget):
         out_base = self.get_output_folder().strip() if self.get_output_folder else ""
         if out_base and os.path.isdir(out_base):
             candidates.append(os.path.join(out_base, "fastsurfer"))
+            candidates.append(os.path.join(out_base, "output_fastsurfer"))
             candidates.append(out_base)
 
         for base in candidates:
+            if not os.path.isdir(base):
+                continue
             base_name = os.path.basename(base.rstrip(r'\/')).lower()
             parent = os.path.dirname(base.rstrip(r'\/'))
             if base_name in ("left_hippocampus", "lh", "left"):
                 for cand_r in ["right_hippocampus", "rh", "right"]:
                     r_path = os.path.join(parent, cand_r)
-                    if os.path.isdir(r_path) and glob.glob(os.path.join(r_path, "*.nii*")):
+                    if self._has_meshes_or_nii(r_path):
                         return base, r_path, parent
                 return base, None, parent
             elif base_name in ("right_hippocampus", "rh", "right"):
                 for cand_l in ["left_hippocampus", "lh", "left"]:
                     l_path = os.path.join(parent, cand_l)
-                    if os.path.isdir(l_path) and glob.glob(os.path.join(l_path, "*.nii*")):
+                    if self._has_meshes_or_nii(l_path):
                         return l_path, base, parent
                 return None, base, parent
 
             lh = os.path.join(base, "left_hippocampus")
             rh = os.path.join(base, "right_hippocampus")
-            if (os.path.isdir(lh) and glob.glob(os.path.join(lh, "*.nii*"))) or \
-               (os.path.isdir(rh) and glob.glob(os.path.join(rh, "*.nii*"))):
+            if self._has_meshes_or_nii(lh) or self._has_meshes_or_nii(rh):
                 return lh, rh, base
 
             lh_fs = os.path.join(base, "fastsurfer", "left_hippocampus")
             rh_fs = os.path.join(base, "fastsurfer", "right_hippocampus")
-            if (os.path.isdir(lh_fs) and glob.glob(os.path.join(lh_fs, "*.nii*"))) or \
-               (os.path.isdir(rh_fs) and glob.glob(os.path.join(rh_fs, "*.nii*"))):
+            if self._has_meshes_or_nii(lh_fs) or self._has_meshes_or_nii(rh_fs):
                 return lh_fs, rh_fs, base
 
             lh_lr = os.path.join(base, "left")
             rh_lr = os.path.join(base, "right")
-            if (os.path.isdir(lh_lr) and glob.glob(os.path.join(lh_lr, "*.nii*"))) or \
-               (os.path.isdir(rh_lr) and glob.glob(os.path.join(rh_lr, "*.nii*"))):
+            if self._has_meshes_or_nii(lh_lr) or self._has_meshes_or_nii(rh_lr):
                 return lh_lr, rh_lr, base
 
-            nii_files = glob.glob(os.path.join(base, "*.nii*"))
-            if nii_files:
-                lh_files = [f for f in nii_files if os.path.basename(f).startswith("lh_") or "_lh." in os.path.basename(f).lower() or "left" in os.path.basename(f).lower()]
-                rh_files = [f for f in nii_files if os.path.basename(f).startswith("rh_") or "_rh." in os.path.basename(f).lower() or "right" in os.path.basename(f).lower()]
+            files = []
+            for ext in ["*.nii*", "*.vtk", "*.stl", "*.mgz"]:
+                files.extend(glob.glob(os.path.join(base, ext)))
+            if files:
+                lh_files = [f for f in files if os.path.basename(f).startswith("lh_") or "_lh." in os.path.basename(f).lower() or "left" in os.path.basename(f).lower()]
+                rh_files = [f for f in files if os.path.basename(f).startswith("rh_") or "_rh." in os.path.basename(f).lower() or "right" in os.path.basename(f).lower()]
                 if lh_files and rh_files:
                     sub_lh = os.path.join(base, "left_hippocampus")
                     sub_rh = os.path.join(base, "right_hippocampus")
@@ -499,24 +444,30 @@ class IcpPanel(QWidget):
     def update_run_button_state(self):
         lh_dir, rh_dir, resolved_base = self.resolve_input_folders()
 
-        has_lh = bool(lh_dir and os.path.isdir(lh_dir) and glob.glob(os.path.join(lh_dir, "*.nii*")))
-        has_rh = bool(rh_dir and os.path.isdir(rh_dir) and glob.glob(os.path.join(rh_dir, "*.nii*")))
+        has_lh = bool(lh_dir and self._has_meshes_or_nii(lh_dir))
+        has_rh = bool(rh_dir and self._has_meshes_or_nii(rh_dir))
 
         default_out = self.get_default_output_dir(resolved_base)
         custom_dir = self.icp_dir_input.text().strip()
         if not custom_dir and default_out:
             self.icp_dir_input.setText(default_out)
 
-        target_out = custom_dir if custom_dir else default_out
+        self.populate_results_table()
 
         if not has_lh and not has_rh:
             self.run_icp_btn.setEnabled(False)
-            self.run_icp_btn.setToolTip("")
+            self.run_icp_btn.setToolTip("FastSurfer output not found. Please run FastSurfer first.")
+            self.icp_status_hint.setText("⚠️ FastSurfer output not found. Please run FastSurfer first.")
+            self.icp_status_hint.setStyleSheet("color: #e67e22; font-size: 11px;")
         else:
             self.run_icp_btn.setEnabled(True)
             self.run_icp_btn.setToolTip("Click to run Groupwise ICP Registration")
-
-        self.populate_results_table()
+            if len(self.all_files) > 0:
+                self.icp_status_hint.setText(f"✓ ICP results loaded ({len(self.all_files)} meshes). Ready to view or re-run.")
+                self.icp_status_hint.setStyleSheet("color: #27ae60; font-size: 11px;")
+            else:
+                self.icp_status_hint.setText("✓ FastSurfer output detected. Ready to run ICP registration.")
+                self.icp_status_hint.setStyleSheet("color: #2980b9; font-size: 11px;")
 
     def run_icp_process(self):
         lh_dir, rh_dir, resolved_base = self.resolve_input_folders()

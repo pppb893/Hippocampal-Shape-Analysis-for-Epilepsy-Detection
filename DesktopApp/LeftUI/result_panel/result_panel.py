@@ -113,9 +113,9 @@ class ResultPanel(QWidget):
         container_layout.setSpacing(8)
 
         # ---------------------------------------------------------------------
-        # 1. Diagnostic Model & Input Data
+        # 1. Diagnostic Model
         # ---------------------------------------------------------------------
-        header_group = QGroupBox("1. Diagnostic Model & Input Data")
+        header_group = QGroupBox("1. Diagnostic Model")
         header_group.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #dcdde1;
@@ -136,57 +136,9 @@ class ResultPanel(QWidget):
         h_layout.setContentsMargins(10, 16, 10, 10)
         h_layout.setSpacing(6)
 
-        btn_secondary_style = """
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:1 #e9ecef);
-                color: #2c3e50;
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px 10px;
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #dee2e6);
-                border: 1px solid #b2bec3;
-                color: #1a252f;
-            }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dee2e6, stop:1 #ced4da);
-                border: 1px solid #95a5a6;
-            }
-        """
-
-        path_row = QHBoxLayout()
-        path_lbl = QLabel("SPHARM Dir:")
-        path_lbl.setFixedWidth(68)
-        path_lbl.setStyleSheet("font-size: 11px; color: #2c3e50; font-weight: bold;")
+        # Internal directory input for pipeline & left_panel integration
         self.spharm_dir_input = QLineEdit()
-        self.spharm_dir_input.setPlaceholderText("Select directory with SPHARM .coef / .vtk results...")
-        self.spharm_dir_input.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #ced6e0;
-                border-radius: 4px;
-                padding: 5px 8px;
-                font-size: 11px;
-                background: #ffffff;
-            }
-            QLineEdit:focus { border: 1px solid #3498db; }
-        """)
-
-        browse_btn = QPushButton("Browse")
-        browse_btn.setStyleSheet(btn_secondary_style)
-        browse_btn.clicked.connect(self.browse_spharm_dir)
-
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setStyleSheet(btn_secondary_style)
-        refresh_btn.clicked.connect(self.on_spharm_dir_changed)
-
-        path_row.addWidget(path_lbl)
-        path_row.addWidget(self.spharm_dir_input)
-        path_row.addWidget(browse_btn)
-        path_row.addWidget(refresh_btn)
-        h_layout.addLayout(path_row)
+        self.spharm_dir_input.textChanged.connect(self.on_spharm_dir_changed)
 
         model_badge = QLabel("Architecture: <b>(1D-CNN) + PLS-DA</b> | Weights: <b>Trained & Frozen</b>")
         model_badge.setWordWrap(True)
@@ -195,36 +147,16 @@ class ResultPanel(QWidget):
         container_layout.addWidget(header_group)
 
         # ---------------------------------------------------------------------
-        # 2. Execution & Output Directory
+        # 2. Execution & Batch Evaluation
         # ---------------------------------------------------------------------
-        exec_group = QGroupBox("2. Batch Evaluation & Output Configuration")
+        exec_group = QGroupBox("2. Batch Evaluation")
         exec_group.setStyleSheet(header_group.styleSheet())
         e_layout = QVBoxLayout(exec_group)
         e_layout.setContentsMargins(10, 16, 10, 10)
         e_layout.setSpacing(6)
 
-        out_row = QHBoxLayout()
-        out_lbl = QLabel("Output Dir:")
-        out_lbl.setFixedWidth(68)
-        out_lbl.setStyleSheet("font-size: 11px; color: #2c3e50; font-weight: bold;")
+        # Internal directory input for pipeline & left_panel integration
         self.result_dir_input = QLineEdit()
-        self.result_dir_input.setPlaceholderText("Auto (.../output_Result)")
-        self.result_dir_input.setStyleSheet(self.spharm_dir_input.styleSheet())
-
-        browse_out_btn = QPushButton("Browse")
-        browse_out_btn.setStyleSheet(btn_secondary_style)
-        browse_out_btn.clicked.connect(self.browse_result_dir)
-
-        reload_res_btn = QPushButton("Load")
-        reload_res_btn.setToolTip("Scan output_Result folder and load existing evaluations")
-        reload_res_btn.setStyleSheet(btn_secondary_style)
-        reload_res_btn.clicked.connect(self.load_existing_results)
-
-        out_row.addWidget(out_lbl)
-        out_row.addWidget(self.result_dir_input)
-        out_row.addWidget(browse_out_btn)
-        out_row.addWidget(reload_res_btn)
-        e_layout.addLayout(out_row)
 
         eval_opts_layout = QHBoxLayout()
         eval_lbl = QLabel("Target:")
@@ -293,6 +225,9 @@ class ResultPanel(QWidget):
         e_layout.addWidget(self.batch_prog_bar)
 
         self.batch_status_hint = QLabel("")
+        self.batch_status_hint.setWordWrap(True)
+        self.batch_status_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        e_layout.addWidget(self.batch_status_hint)
         container_layout.addWidget(exec_group)
 
         # ---------------------------------------------------------------------
@@ -380,6 +315,8 @@ class ResultPanel(QWidget):
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
 
+        self.update_run_button_state()
+
     # =========================================================================
     # Path Resolution & Navigation
     # =========================================================================
@@ -406,36 +343,56 @@ class ResultPanel(QWidget):
             self.result_dir_input.setText(folder)
             self.load_existing_results()
 
-    def on_spharm_dir_changed(self):
+    def update_run_button_state(self):
+        # 1. Resolve directories from global output folder if not set
+        out_base = self.get_output_folder().strip() if self.get_output_folder else ""
+        if out_base and os.path.isdir(out_base):
+            spharm_cand = os.path.join(out_base, "output_SPHARM")
+            if os.path.isdir(spharm_cand):
+                self.spharm_dir_input.setText(spharm_cand)
+            elif not self.spharm_dir_input.text().strip():
+                self.spharm_dir_input.setText(out_base)
+
+            res_cand = os.path.join(out_base, "output_Result")
+            if not self.result_dir_input.text().strip():
+                self.result_dir_input.setText(res_cand)
+
+        # 2. Check if Result output already exists -> auto-load and display immediately
+        target_res = self.result_dir_input.text().strip()
+        if not target_res and out_base:
+            target_res = os.path.join(out_base, "output_Result")
+            self.result_dir_input.setText(target_res)
+
+        if target_res and os.path.isdir(target_res):
+            summary_json = os.path.join(target_res, "evaluation_summary.json")
+            if os.path.isfile(summary_json) and not self.all_evaluation_results:
+                self.load_existing_results()
+
+        # 3. Check if SPHARM output exists
         subjs = self.eval_mgr.discover_spharm_subjects()
         count = len(subjs)
-        if count > 0:
-            self.batch_status_hint.setText(f"Found {count} subject(s) in SPHARM directory ready for evaluation.")
-            self.batch_status_hint.setStyleSheet("color: #27ae60; font-size: 11px;")
+
+        if count == 0:
+            self.predict_btn.setEnabled(False)
+            self.predict_btn.setToolTip("SPHARM output not found. Please run SPHARM-PDM first.")
+            if not self.all_evaluation_results:
+                self.batch_status_hint.setText("⚠️ SPHARM output not found. Please run SPHARM-PDM first.")
+                self.batch_status_hint.setStyleSheet("color: #e67e22; font-size: 11px;")
         else:
-            self.batch_status_hint.setText("No SPHARM .coef / .vtk files found in current directory.")
-            self.batch_status_hint.setStyleSheet("color: #e67e22; font-size: 11px;")
+            self.predict_btn.setEnabled(True)
+            self.predict_btn.setToolTip(f"Click to run diagnostic prediction for {count} subject(s)")
+            if self.all_evaluation_results:
+                self.batch_status_hint.setText(f"✓ Evaluation results loaded ({len(self.all_evaluation_results)} subjects). Ready to view or re-run.")
+                self.batch_status_hint.setStyleSheet("color: #27ae60; font-size: 11px;")
+            else:
+                self.batch_status_hint.setText(f"✓ SPHARM output ready ({count} subjects found). Ready to run prediction.")
+                self.batch_status_hint.setStyleSheet("color: #2980b9; font-size: 11px;")
+
+    def on_spharm_dir_changed(self):
+        self.update_run_button_state()
 
     def on_panel_activated(self):
-        if not self.spharm_dir_input.text().strip():
-            if self.get_output_folder:
-                out_dir = self.get_output_folder().strip()
-                if out_dir and os.path.isdir(out_dir):
-                    spharm_cand = os.path.join(out_dir, "output_SPHARM")
-                    if os.path.isdir(spharm_cand):
-                        self.spharm_dir_input.setText(spharm_cand)
-                    else:
-                        self.spharm_dir_input.setText(out_dir)
-
-        if not self.result_dir_input.text().strip():
-            def_res = self.get_default_output_dir()
-            if def_res:
-                self.result_dir_input.setText(def_res)
-
-        if self.spharm_dir_input.text().strip():
-            self.on_spharm_dir_changed()
-        if not self.all_evaluation_results and self.result_dir_input.text().strip():
-            self.load_existing_results()
+        self.update_run_button_state()
 
     # Forwarding methods for EvaluationManager integration
     def run_batch_prediction(self):
